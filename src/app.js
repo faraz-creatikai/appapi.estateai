@@ -49,6 +49,8 @@ app.use(
     origin: [
       "http://localhost:3000",
       "http://localhost:5678/",
+      "https://property.ibigdata.in",
+      "https://propertybulk.ibigdata.in",
       "https://app.estateai.in",
       
     ],
@@ -96,8 +98,8 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/con/follow/add", confollowaddRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/customerfieldlabels",customerFieldLabelRoutes)
-app.use("/api/aiagent",aiAgentRoutes);
-app.use("/api/airteliq", airteliqCallRoutes);
+app.use("/api/aiagent",aiAgentRoutes)
+app.use("/api/airteliq", airteliqCallRoutes);;
 
 app.use(errorHandler);
 
