@@ -96,8 +96,8 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/con/follow/add", confollowaddRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/customerfieldlabels",customerFieldLabelRoutes)
-app.use("/api/aiagent",aiAgentRoutes)
-app.use("/api/airteliq", airteliqCallRoutes);;
+app.use("/api/aiagent",aiAgentRoutes);
+app.use("/api/airteliq", airteliqCallRoutes);
 
 app.use(errorHandler);
 
