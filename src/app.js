@@ -49,8 +49,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "http://localhost:5678/",
-      "https://property.ibigdata.in",
-      "https://propertybulk.ibigdata.in",
+      "https://app.estateai.in",
       
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
