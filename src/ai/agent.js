@@ -3,6 +3,7 @@ import { openai } from "../config/openai.js";
 import { callingAgentSystemPrompt } from "./prompts/callingAgentPrompt.js";
 import { followupPrompt } from "./prompts/followupPrompt.js";
 import { keywordSearchPrompt } from "./prompts/keywordSearchPrompt.js";
+import { propertyRecommendationPrompt } from "./prompts/propertyRecommendationPrompt.js";
 import { qualifyCustomerPrompt } from "./prompts/qualifyCustomerPrompt.js";
 
 
@@ -142,6 +143,40 @@ export async function CallingAgent(userPrompt) {
         parts: [
           {
             text: `${callingAgentSystemPrompt}
+DATA:
+${JSON.stringify(userPrompt, null, 2)}`
+          }
+        ]
+      }
+    ],
+  });
+
+  const raw = response?.text;
+  //console.log(" raw ", raw)
+
+  if (!raw || !raw.trim()) {
+    throw new Error("AI returned empty response");
+  }
+
+  // Extract JSON safely
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+
+  if (!jsonMatch) {
+    throw new Error("Invalid AI response format");
+  }
+
+  return safeJsonParse(jsonMatch[0]);
+}
+
+export async function PropertyRecommendationAgent(userPrompt) {
+  const response = await gemini.models.generateContent({
+    model: "models/gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `${propertyRecommendationPrompt}
 DATA:
 ${JSON.stringify(userPrompt, null, 2)}`
           }

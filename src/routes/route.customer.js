@@ -16,6 +16,7 @@ import {
   getCallLogs,
   getCallReport,
   deleteCallLogById,
+  getRecommendedCustomer,
 } from "../controllers/controller.customer.js";
 
 import upload from "../config/multer.js";
@@ -40,12 +41,13 @@ customerRoutes.use(protectRoute);
 // 🧭 Base CRUD Routes
 customerRoutes.get("/today", getTodayCustomers);
 customerRoutes.get("/getcalllogs",getCallLogs);
-customerRoutes.get("/get-call-report",getCallReport)
+customerRoutes.get("/get-call-report",getCallReport);
 customerRoutes.get("/", getCustomer);
 customerRoutes.get("/:id", getCustomerById);
 
 customerRoutes.post("/check-duplicates", checkDuplicateContacts);
 customerRoutes.post("/qualification-agent", qualifyCustomer);
+customerRoutes.post("/recommended-customers",getRecommendedCustomer);
 
 customerRoutes.post("/agent-call", startCall);
 

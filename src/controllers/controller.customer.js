@@ -2,7 +2,7 @@ import prisma from "../config/prismaClient.js";
 import ApiError from "../utils/ApiError.js";
 import fs from "fs";
 import cloudinary from "../config/cloudinary.js";
-import { getKeywordSearchData } from "../ai/getKeywordSearchData.js";
+import { getKeywordSearchData, getRecommendedKeywordSearchData } from "../ai/getKeywordSearchData.js";
 
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
@@ -1122,211 +1122,6 @@ export const createCustomer = async (req, res, next) => {
   }
 };
 
-// UPDATE CUSTOMER
-// export const updateCustomer = async (req, res, next) => {
-//   try {
-//     const admin = req.admin;
-//     const { id } = req.params;
-
-//     let updateData = { ...req.body };
-
-//     // SAFE PARSE (unchanged)
-//     const safeParse = (value) => {
-//       if (value === undefined || value === null || value === "")
-//         return undefined;
-//       if (Array.isArray(value)) return value;
-//       try {
-//         return JSON.parse(value);
-//       } catch {
-//         return undefined;
-//       }
-//     };
-
-//     // PARSE FIELDS FROM FRONTEND
-//     updateData.CustomerImage = safeParse(updateData.CustomerImage);
-//     updateData.SitePlan = safeParse(updateData.SitePlan);
-
-//     updateData.removedCustomerImages =
-//       safeParse(updateData.removedCustomerImages) || [];
-
-//     updateData.removedSitePlans = safeParse(updateData.removedSitePlans) || [];
-
-//     // FETCH CUSTOMER
-//     const existing = await prisma.customer.findUnique({ where: { id } });
-//     if (!existing) return next(new ApiError(404, "Customer not found"));
-
-//     // ROLE PERMISSIONS
-//     if (
-//       admin.role === "user" &&
-//       existing.AssignToId !== (admin._id || admin.id)
-//     ) {
-//       return next(new ApiError(403, "You can only update your own customers"));
-//     }
-
-//     if (admin.role === "city_admin" && existing.City !== admin.city) {
-//       return next(
-//         new ApiError(403, "You can only update customers in your city")
-//       );
-//     }
-
-//     // LOAD EXISTING IMAGES — FIXED
-//     let CustomerImage = safeParse(existing.CustomerImage) || [];
-//     let SitePlan = safeParse(existing.SitePlan) || [];
-
-//     // ❌ FIX #1 — Your old code: safeParse(existing.CustomerImage)
-//     // Prisma returns a **string**, safeParse → undefined → ARRAY LOST.
-//     // So removal never worked because CustomerImage = [] always.
-//     //
-//     // New behavior parses JSON safely:
-//     if (typeof existing.CustomerImage === "string") {
-//       try {
-//         CustomerImage = JSON.parse(existing.CustomerImage);
-//       } catch {
-//         CustomerImage = [];
-//       }
-//     }
-//     if (typeof existing.SitePlan === "string") {
-//       try {
-//         SitePlan = JSON.parse(existing.SitePlan);
-//       } catch {
-//         SitePlan = [];
-//       }
-//     }
-
-//     // REMOVE SPECIFIC CUSTOMER IMAGES
-//     if (updateData.removedCustomerImages.length > 0) {
-//       await Promise.all(
-//         updateData.removedCustomerImages.map((url) => {
-//           const publicId = getPublicIdFromUrl(url);
-//           if (publicId)
-//             return cloudinary.uploader.destroy(
-//               `customer/customer_images/${publicId}`
-//             );
-//         })
-//       );
-
-//       // FIXED — compare strings correctly
-//       CustomerImage = CustomerImage.filter(
-//         (img) => !updateData.removedCustomerImages.includes(img)
-//       );
-//     }
-
-//     // REMOVE SPECIFIC SITE PLANS
-//     if (updateData.removedSitePlans.length > 0) {
-//       await Promise.all(
-//         updateData.removedSitePlans.map((url) => {
-//           const publicId = getPublicIdFromUrl(url);
-//           if (publicId)
-//             return cloudinary.uploader.destroy(
-//               `customer/site_plans/${publicId}`
-//             );
-//         })
-//       );
-
-//       SitePlan = SitePlan.filter(
-//         (img) => !updateData.removedSitePlans.includes(img)
-//       );
-//     }
-
-//     // REMOVE ALL CUSTOMER IMAGES
-//     if (
-//       updateData.CustomerImage !== undefined &&
-//       Array.isArray(updateData.CustomerImage) &&
-//       updateData.CustomerImage.length === 0
-//     ) {
-//       await Promise.all(
-//         CustomerImage.map((url) => {
-//           const publicId = getPublicIdFromUrl(url);
-//           if (publicId)
-//             return cloudinary.uploader.destroy(
-//               `customer/customer_images/${publicId}`
-//             );
-//         })
-//       );
-//       CustomerImage = [];
-//     }
-
-//     // REMOVE ALL SITE PLANS
-//     if (
-//       updateData.SitePlan !== undefined &&
-//       Array.isArray(updateData.SitePlan) &&
-//       updateData.SitePlan.length === 0
-//     ) {
-//       await Promise.all(
-//         SitePlan.map((url) => {
-//           const publicId = getPublicIdFromUrl(url);
-//           if (publicId)
-//             return cloudinary.uploader.destroy(
-//               `customer/site_plans/${publicId}`
-//             );
-//         })
-//       );
-//       SitePlan = [];
-//     }
-
-//     // UPLOAD NEW CUSTOMER IMAGES
-//     if (req.files?.CustomerImage) {
-//       const uploads = req.files.CustomerImage.map((file) =>
-//         cloudinary.uploader
-//           .upload(file.path, {
-//             folder: "customer/customer_images",
-//             transformation: [{ width: 1000, crop: "limit" }],
-//           })
-//           .then((upload) => {
-//             fs.unlinkSync(file.path);
-//             return upload.secure_url;
-//           })
-//       );
-
-//       CustomerImage.push(...(await Promise.all(uploads)));
-//     }
-
-//     // UPLOAD NEW SITE PLANS
-//     if (req.files?.SitePlan) {
-//       const uploads = req.files.SitePlan.map((file) =>
-//         cloudinary.uploader
-//           .upload(file.path, {
-//             folder: "customer/site_plans",
-//             transformation: [{ width: 1000, crop: "limit" }],
-//           })
-//           .then((upload) => {
-//             fs.unlinkSync(file.path);
-//             return upload.secure_url;
-//           })
-//       );
-
-//       SitePlan.push(...(await Promise.all(uploads)));
-//     }
-
-//     // SAVE FINAL IMAGE ARRAYS
-//     updateData.CustomerImage = JSON.stringify(CustomerImage);
-//     updateData.SitePlan = JSON.stringify(SitePlan);
-
-//     // Fix null relations
-//     if (updateData.AssignToId === "") updateData.AssignToId = null;
-//     if (updateData.CreatedById === "") updateData.CreatedById = null;
-
-//     // REMOVE NON-DB KEYS
-//     delete updateData.removedCustomerImages;
-//     delete updateData.removedSitePlans;
-//     delete updateData["removedCustomerImages "];
-//     delete updateData["removedSitePlans "];
-
-//     // UPDATE CUSTOMER
-//     const updated = await prisma.customer.update({
-//       where: { id },
-//       data: updateData,
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Customer updated successfully",
-//       data: await transformCustomer(updated),
-//     });
-//   } catch (error) {
-//     next(new ApiError(500, error.message));
-//   }
-// };
 
 export const updateCustomer = async (req, res, next) => {
   try {
@@ -1970,6 +1765,206 @@ export const deleteAllCustomers = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ DeleteAllCustomers Error:", error);
+    next(new ApiError(500, error.message));
+  }
+};
+
+
+// ------------------------------------------------------
+//               RECOMMEND CUSTOMER (AI-AGENT)
+// ------------------------------------------------------
+
+export const getRecommendedCustomer = async (req, res, next) => {
+  try {
+    const admin = req.admin;
+    const { userPrompt, customerId } = req.body;
+
+    if (!userPrompt) {
+      return next(new ApiError(400, "userPrompt is required"));
+    }
+
+    if (!customerId) {
+      return next(new ApiError(400, "customerId is required"));
+    }
+
+    // --------------------------------------------
+    // 🔥 GET BASE CUSTOMER (LIKE QUALIFY FLOW)
+    // --------------------------------------------
+
+    const baseCustomer = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+
+    if (!baseCustomer) {
+      return next(new ApiError(404, "Customer not found"));
+    }
+
+    const followups = await prisma.followup.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // --------------------------------------------
+    // 🔥 AI FILTER GENERATION (MAIN CHANGE)
+    // --------------------------------------------
+
+    const { tokens, fields, priceRange, answer } =
+      await getRecommendedKeywordSearchData(
+        userPrompt,
+        baseCustomer,
+        followups
+      );
+
+    let AND = [];
+
+    // --------------------------------------------
+    // ROLE-BASED FILTERS (UNCHANGED)
+    // --------------------------------------------
+
+    if (admin.role !== "administrator" && admin.clientId) {
+      AND.push({
+        OR: [
+          { ClientId: admin.clientId },
+          { CreatedById: admin.id || admin._id }
+        ]
+      });
+    }
+
+    if (admin.role === "user") {
+      const adminId = admin.id || admin._id;
+
+      AND.push({
+        OR: [
+          {
+            AssignTo: {
+              some: { id: adminId }
+            }
+          },
+          {
+            CreatedById: adminId
+          }
+        ]
+      });
+    }
+
+    else if (admin.role === "city_admin") {
+      const adminId = admin.id || admin._id;
+
+      const assignedCampaignsData = await prisma.customer.findMany({
+        where: {
+          AssignTo: {
+            some: { id: adminId }
+          }
+        },
+        select: { Campaign: true },
+        distinct: ["Campaign"]
+      });
+
+      const assignedCampaigns = assignedCampaignsData
+        .map(c => c.Campaign)
+        .filter(Boolean);
+
+      AND.push({
+        OR: [
+          { CreatedById: adminId },
+          {
+            AND: [
+              { AssignTo: { some: { id: adminId } } },
+              { City: { contains: admin.city } }
+            ]
+          },
+          ...(assignedCampaigns.length > 0
+            ? [{
+              AND: [
+                { Campaign: { in: assignedCampaigns } },
+                { City: { contains: admin.city } }
+              ]
+            }]
+            : [])
+        ]
+      });
+    }
+
+    // --------------------------------------------
+    // 🔥 APPLY AI FILTERS (SMART)
+    // --------------------------------------------
+
+    if (tokens.length > 0) {
+      AND.push({
+        AND: tokens.map((t) => ({
+          OR: fields.map((field) => ({
+            [field]: { contains: t },
+          })),
+        })),
+      });
+    }
+
+    if (priceRange?.min || priceRange?.max) {
+      const min = priceRange?.min !== null
+        ? Number(String(priceRange.min).replace(/[^0-9]/g, ""))
+        : null;
+
+      const max = priceRange?.max !== null
+        ? Number(String(priceRange.max).replace(/[^0-9]/g, ""))
+        : null;
+
+      if (!isNaN(min) || !isNaN(max)) {
+        AND.push({
+          PriceNumber: {
+            ...(min !== null && !isNaN(min) && { gte: min }),
+            ...(max !== null && !isNaN(max) && { lte: max }),
+          }
+        });
+      }
+    }
+
+    const where = AND.length ? { AND } : {};
+
+    // --------------------------------------------
+    // FETCH MATCHING CUSTOMERS
+    // --------------------------------------------
+
+    let customers = await prisma.customer.findMany({
+      where,
+      orderBy: [
+        { updatedAt: "desc" },
+        { createdAt: "desc" }
+      ],
+      distinct: ["ContactNumber"],
+      include: { AssignTo: true }
+    });
+
+    // --------------------------------------------
+    // SORT
+    // --------------------------------------------
+
+    customers.sort((a, b) => {
+      const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    // --------------------------------------------
+    // TRANSFORM
+    // --------------------------------------------
+
+    const transformed = await Promise.all(
+      customers.map(transformGetCustomer)
+    );
+
+    res.status(200).json({
+      success: true,
+      count: transformed.length,
+      data: transformed,
+      aiAnswer: answer,
+      appliedFilters: {
+        tokens,
+        fields,
+        priceRange
+      }
+    });
+
+  } catch (error) {
     next(new ApiError(500, error.message));
   }
 };
