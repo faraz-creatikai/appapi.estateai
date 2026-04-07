@@ -49,7 +49,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "http://localhost:5678/",
-      "https://app.estatiai.in",
+      "https://app.estateai.in",
 
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
