@@ -543,7 +543,7 @@ model CallLog {
 
   //AI Outputs
   transcript String? @db.LongText
-  summary    String?
+  summary    String? @db.LongText
   sentiment  String?
 
   //Extracted Structured Fields (VERY IMPORTANT)
