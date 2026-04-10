@@ -17,6 +17,7 @@ import {
   getCallReport,
   deleteCallLogById,
   getRecommendedCustomer,
+  dataMining,
 } from "../controllers/controller.customer.js";
 
 import upload from "../config/multer.js";
@@ -42,6 +43,7 @@ customerRoutes.use(protectRoute);
 customerRoutes.get("/today", getTodayCustomers);
 customerRoutes.get("/getcalllogs",getCallLogs);
 customerRoutes.get("/get-call-report",getCallReport);
+customerRoutes.get("/data-mining", dataMining);
 customerRoutes.get("/", getCustomer);
 customerRoutes.get("/:id", getCustomerById);
 

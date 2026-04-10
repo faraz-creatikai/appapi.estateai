@@ -1,6 +1,7 @@
 import { gemini } from "../config/gemini.js";
 import { openai } from "../config/openai.js";
 import { callingAgentSystemPrompt } from "./prompts/callingAgentPrompt.js";
+import { dataminingPrompt } from "./prompts/dataminingAgentPrompt.js";
 import { followupPrompt } from "./prompts/followupPrompt.js";
 import { keywordSearchPrompt } from "./prompts/keywordSearchPrompt.js";
 import { propertyRecommendationPrompt } from "./prompts/propertyRecommendationPrompt.js";
@@ -23,7 +24,6 @@ export function safeJsonParse(raw) {
     return null;
   }
 }
-
 
 export async function keywordSearchAgent(userPrompt) {
   const response = await gemini.models.generateContent({
@@ -133,7 +133,6 @@ ${JSON.stringify(userPrompt, null, 2)}`
   return safeJsonParse(jsonMatch[0]);
 }
 
-
 export async function CallingAgent(userPrompt) {
   const response = await gemini.models.generateContent({
     model: "models/gemini-2.5-flash",
@@ -200,6 +199,33 @@ ${JSON.stringify(userPrompt, null, 2)}`
   }
 
   return safeJsonParse(jsonMatch[0]);
+}
+
+export async function DataMiningAgent(data) {
+  const response = await gemini.models.generateContent({
+    model: "models/gemini-2.5-flash-lite",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `
+${dataminingPrompt}
+DATA:
+${JSON.stringify(data, null, 2)}
+            `
+          }
+        ]
+      }
+    ],
+  });
+
+  const raw = response?.text;
+
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("Invalid AI response");
+
+  return JSON.parse(jsonMatch[0]);
 }
 
 export async function followupAgentOpenai(userPrompt) {

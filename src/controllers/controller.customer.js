@@ -7,7 +7,7 @@ import { getKeywordSearchData, getRecommendedKeywordSearchData } from "../ai/get
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
-import { CallingAgent, QualifyAgent } from "../ai/agent.js";
+import { CallingAgent, DataMiningAgent, QualifyAgent } from "../ai/agent.js";
 import { callingAgentPrompt } from "../ai/prompts/callingAgentPrompt.js";
 
 dayjs.extend(utc);
@@ -57,6 +57,7 @@ const transformGetCustomer = async (c) => {
   const base = {
     ...c,
     _id: c.id,
+    CustomerDate: c.CustomerDate,
     CustomerImage: parseJSON(c.CustomerImage),
     SitePlan: parseJSON(c.SitePlan),
   };
@@ -2030,6 +2031,193 @@ export const qualifyCustomer = async (req, res, next) => {
   }
 }
 
+// data mining agent
+
+export const dataMining = async (req, res, next) => {
+  try {
+    const now = new Date();
+
+    const last7Days = new Date();
+    last7Days.setDate(now.getDate() - 7);
+
+    const last30Days = new Date();
+    last30Days.setDate(now.getDate() - 30);
+
+    // ================================
+    // 1. TOTAL METRICS
+    // ================================
+    const [totalLeads7d, totalLeads30d, totalConversions7d] =
+      await Promise.all([
+        prisma.customer.count({
+          where: { createdAt: { gte: last7Days } }
+        }),
+        prisma.customer.count({
+          where: { createdAt: { gte: last30Days } }
+        }),
+        prisma.customer.count({
+          where: {
+            LeadTemperature: "hot",
+            createdAt: { gte: last7Days }
+          }
+        })
+      ]);
+
+    const conversionRate =
+      totalLeads7d > 0
+        ? ((totalConversions7d / totalLeads7d) * 100).toFixed(2)
+        : 0;
+
+    // ================================
+    // 2. CAMPAIGN PERFORMANCE (TOP 5)
+    // ================================
+    const [leadsByCampaign, conversionsByCampaign] =
+      await Promise.all([
+        prisma.customer.groupBy({
+          by: ["Campaign"],
+          where: { createdAt: { gte: last7Days } },
+          _count: { id: true }
+        }),
+        prisma.customer.groupBy({
+          by: ["Campaign"],
+          where: {
+            LeadTemperature: "hot",
+            createdAt: { gte: last7Days }
+          },
+          _count: { id: true }
+        })
+      ]);
+
+    const topCampaigns = leadsByCampaign
+      .sort((a, b) => b._count.id - a._count.id)
+      .slice(0, 5);
+
+    const topConversions = conversionsByCampaign
+      .sort((a, b) => b._count.id - a._count.id)
+      .slice(0, 5);
+
+    // ================================
+    // 3. TOP CITIES (LIMITED)
+    // ================================
+    const leadsByCityRaw = await prisma.customer.groupBy({
+      by: ["City"],
+      where: { createdAt: { gte: last30Days } },
+      _count: { id: true }
+    });
+
+    const topCities = leadsByCityRaw
+      .sort((a, b) => b._count.id - a._count.id)
+      .slice(0, 5);
+
+    // ================================
+    // 4. FUNNEL (COMPRESSED)
+    // ================================
+    const funnelRaw = await prisma.customer.groupBy({
+      by: ["LeadTemperature"],
+      _count: { id: true }
+    });
+
+    const funnel = {
+      hot: 0,
+      warm: 0,
+      cold: 0
+    };
+
+    funnelRaw.forEach(f => {
+      if (f.LeadTemperature === "hot") funnel.hot = f._count.id;
+      if (f.LeadTemperature === "warm") funnel.warm = f._count.id;
+      if (f.LeadTemperature === "cold") funnel.cold = f._count.id;
+    });
+
+    // ================================
+    // 5. ENGAGEMENT (AGGREGATED ONLY)
+    // ================================
+    const [totalFollowups, totalCalls] = await Promise.all([
+      prisma.followup.count({
+        where: { createdAt: { gte: last7Days } }
+      }),
+      prisma.callLog.count({
+        where: { createdAt: { gte: last7Days } }
+      })
+    ]);
+
+    const avgFollowupsPerLead =
+      totalLeads7d > 0
+        ? (totalFollowups / totalLeads7d).toFixed(2)
+        : 0;
+
+    const avgCallsPerLead =
+      totalLeads7d > 0
+        ? (totalCalls / totalLeads7d).toFixed(2)
+        : 0;
+
+    // ================================
+    // 6. BUDGET SEGMENTATION
+    // ================================
+    const budgets = await prisma.customer.findMany({
+      where: { PriceNumber: { not: null } },
+      select: { PriceNumber: true }
+    });
+
+    const budgetSegments = {
+      "0-20L": 0,
+      "20L-50L": 0,
+      "50L-1Cr": 0,
+      "1Cr+": 0
+    };
+
+    budgets.forEach(b => {
+      const p = b.PriceNumber;
+      if (p <= 2000000) budgetSegments["0-20L"]++;
+      else if (p <= 5000000) budgetSegments["20L-50L"]++;
+      else if (p <= 10000000) budgetSegments["50L-1Cr"]++;
+      else budgetSegments["1Cr+"]++;
+    });
+
+    // ================================
+    // FINAL AI INPUT (OPTIMIZED)
+    // ================================
+    const miningInput = {
+      totals: {
+        last7Days: {
+          totalLeads: totalLeads7d,
+          totalConversions: totalConversions7d,
+          conversionRate
+        },
+        last30Days: {
+          totalLeads: totalLeads30d
+        }
+      },
+
+      campaigns: {
+        topLeads: topCampaigns,
+        topConversions: topConversions
+      },
+
+      locations: topCities,
+
+      funnel,
+
+      engagement: {
+        avgFollowupsPerLead,
+        avgCallsPerLead
+      },
+
+      budget: budgetSegments
+    };
+
+    console.log("AI Input:", JSON.stringify(miningInput, null, 2));
+
+    const agentResponse = await DataMiningAgent(miningInput);
+
+    res.status(200).json({
+      success: true,
+      data: agentResponse
+    });
+
+  } catch (error) {
+    next(new ApiError(500, error.message));
+  }
+};
 
 export const startCall = async (req, res) => {
   try {
