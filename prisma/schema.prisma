@@ -542,8 +542,8 @@ model CallLog {
   recordingUrl String?
 
   //AI Outputs
-  transcript String?
-  summary    String?
+  transcript String? @db.LongText
+  summary    String? @db.LongText
   sentiment  String?
 
   //Extracted Structured Fields (VERY IMPORTANT)
