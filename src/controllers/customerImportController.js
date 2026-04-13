@@ -129,9 +129,14 @@ export const importCustomers = async (req, res, next) => {
     // ----------------------------
     if (!req.file) return next(new ApiError(400, "No file uploaded"));
 
-    const workbook = xlsx.readFile(req.file.path);
+    const workbook = xlsx.readFile(req.file.path, {
+  cellDates: true,
+});
     const sheetName = workbook.SheetNames[0];
-    const sheet = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+    const sheet = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
+  raw: false,
+  dateNF: "dd-mm-yyyy",
+});
 
     if (!sheet.length) return next(new ApiError(400, "Empty Excel file"));
 

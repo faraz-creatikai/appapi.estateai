@@ -68,6 +68,8 @@ export async function getRecommendedKeywordSearchData(keyword,customer,
   })),
   userPrompt: keyword
 };
+
+console.log(" userMessage ", userMessage)
     const aiResult = await PropertyRecommendationAgent(userMessage);
     console.log(" data ", aiResult)
     if (

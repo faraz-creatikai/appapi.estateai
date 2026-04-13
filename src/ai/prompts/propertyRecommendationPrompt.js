@@ -77,6 +77,60 @@ TOKEN EXTRACTION RULES (VERY IMPORTANT):
 - ONLY extract HIGH-INTENT keywords that are likely to exist in database fields
 - MAXIMUM 3–5 tokens (never more)
 
+--------------------------------
+FALLBACK TOKEN GENERATION (CRITICAL)
+--------------------------------
+
+If userPrompt does NOT provide enough valid tokens:
+
+You MUST generate tokens using CUSTOMER CONTEXT.
+
+PRIORITY ORDER:
+
+1. customer.city
+2. customer.location
+3. customer.sublocation
+4. customer.campaign (only if useful)
+5. followups.description (extract meaningful keywords if relevant)
+
+RULES:
+
+- You MUST return at least 2 tokens ALWAYS
+- You MUST NOT return empty tokens
+- Tokens must still follow all filtering rules (no generic words)
+
+EXAMPLES:
+
+Input:
+userPrompt: "Who are similar customers?"
+
+Output tokens:
+["Jaipur", "Amer Road"]
+
+---
+
+Input:
+userPrompt: "Any good options?"
+
+Output tokens:
+["Jaipur", "Amer Road"]
+
+---
+
+Input:
+userPrompt: "Show me properties"
+
+Output tokens:
+["Jaipur", "Amer Road"]
+
+---
+
+CRITICAL:
+
+- NEVER return empty tokens
+- ALWAYS fallback to customer context when needed
+
+
 INCLUDE:
 - City (e.g., Jaipur)
 - Location / SubLocation (e.g., Amer Road, Vaishali Nagar)

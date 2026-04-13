@@ -12,7 +12,7 @@ model Admin {
   name         String
   email        String      @unique
   password     String
-  role         Role  
+  role         Role
   city         String?
   phone        String?
   status       AdminStatus @default(active)
@@ -569,4 +569,45 @@ model CallLog {
   @@index([calledTo])
   @@index([normalizedPhone])
   @@index([customerId])
+}
+
+model Property {
+  id              String  @id @default(uuid())
+  Campaign        String? @default("")
+  PropertyType    String? @default("")
+  PropertySubType String? @default("")
+  propertyName    String
+  ContactNumber   String
+  City            String? @default("")
+  Location        String? @default("")
+  SubLocation     String? @default("")
+  Area            String? @default("")
+  Adderess        String? @default("")
+  Email           String? @default("")
+  Facillities     Json?   @default("{}")
+  ReferenceId     String? @default("")
+  PropertyId      String? @default("")
+  PropertyDate    String? @default("")
+  PropertyYear    String? @default("")
+  Other           String? @default("")
+  Description     String? @db.LongText
+  Video           String? @default("")
+  Verified        String? @default("")
+  GoogleMap       String? @default("")
+  URL             String? @default("")
+  Price           Float?  @default(0)
+  Features        Json?   @default("[]")
+  PropertyImage   Json?   @default("[]")
+  AgentImage      Json?   @default("[]")
+  AgentInfo       Json?   @default("{}")
+  isFavourite     Boolean @default(false)
+  isChecked       Boolean @default(false)
+
+  // -------------------------------
+  // RELATIONS with Admin
+  // -------------------------------
+
+  isImported Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
 }

@@ -41,6 +41,8 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 import aiAgentRoutes from "./routes/route.aiagent.js";
 import leadtypeRoutes from "./routes/route.leadtype.js";
 import airteliqCallRoutes from "./routes/route.airteliq.js";
+import socialContentRoutes from "./routes/route.socialContent.js";
+import propertyRoutes from "./routes/route.property.js";
 const app = express();
 app.use(cookieParser());
 
@@ -50,9 +52,7 @@ app.use(
       "http://localhost:3000",
       "http://localhost:5678/",
       "https://app.estateai.in",
-      "https://property.ibigdata.in",
-      "https://propertybulk.ibigdata.in",
-      
+      "https://estateai.in",     
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
@@ -99,7 +99,9 @@ app.use("/api/con/follow/add", confollowaddRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/customerfieldlabels",customerFieldLabelRoutes)
 app.use("/api/aiagent",aiAgentRoutes)
-app.use("/api/airteliq", airteliqCallRoutes);;
+app.use("/api/airteliq", airteliqCallRoutes);
+app.use("/api/social-content", socialContentRoutes);
+app.use("/api/property", propertyRoutes);
 
 app.use(errorHandler);
 

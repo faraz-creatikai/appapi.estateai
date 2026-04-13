@@ -1,7 +1,7 @@
 import { gemini } from "../config/gemini.js";
 import { openai } from "../config/openai.js";
 import { callingAgentSystemPrompt } from "./prompts/callingAgentPrompt.js";
-import { dataminingPrompt } from "./prompts/dataminingAgentPrompt.js";
+import { dataminingPrompt, miningDataPrompt } from "./prompts/dataminingAgentPrompt.js";
 import { followupPrompt } from "./prompts/followupPrompt.js";
 import { keywordSearchPrompt } from "./prompts/keywordSearchPrompt.js";
 import { propertyRecommendationPrompt } from "./prompts/propertyRecommendationPrompt.js";
@@ -135,7 +135,7 @@ ${JSON.stringify(userPrompt, null, 2)}`
 
 export async function CallingAgent(userPrompt) {
   const response = await gemini.models.generateContent({
-    model: "models/gemini-2.5-flash",
+    model: "models/gemini-2.5-flash-lite",
     contents: [
       {
         role: "user",
@@ -169,7 +169,7 @@ ${JSON.stringify(userPrompt, null, 2)}`
 
 export async function PropertyRecommendationAgent(userPrompt) {
   const response = await gemini.models.generateContent({
-    model: "models/gemini-2.5-flash",
+    model: "models/gemini-2.5-flash-lite",
     contents: [
       {
         role: "user",
@@ -226,6 +226,40 @@ ${JSON.stringify(data, null, 2)}
   if (!jsonMatch) throw new Error("Invalid AI response");
 
   return JSON.parse(jsonMatch[0]);
+}
+
+export async function MiningDataAgent(userPrompt) {
+  const response = await gemini.models.generateContent({
+    model: "models/gemini-2.5-flash-lite",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `${miningDataPrompt}
+DATA:
+${JSON.stringify(userPrompt, null, 2)}`
+          }
+        ]
+      }
+    ],
+  });
+
+  const raw = response?.text;
+  console.log(" raw ", raw)
+
+  if (!raw || !raw.trim()) {
+    throw new Error("AI returned empty response");
+  }
+
+  // Extract JSON safely
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+
+  if (!jsonMatch) {
+    throw new Error("Invalid AI response format");
+  }
+
+  return safeJsonParse(jsonMatch[0]);
 }
 
 export async function followupAgentOpenai(userPrompt) {
