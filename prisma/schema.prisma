@@ -607,6 +607,10 @@ model Property {
   // RELATIONS with Admin
   // -------------------------------
 
+  // Created By Admin
+  CreatedById String?
+  CreatedBy   Admin?  @relation("PropertyCreatedBy", fields: [CreatedById], references: [id], map: "fk_property_createdby")
+
   isImported Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
