@@ -553,27 +553,27 @@ export const createProperty = async (req, res, next) => {
     }
 
     // --- Get active fields from master ---
-    const activeFields = await prisma.propertyFields.findMany({
-      where: { Status: "Active" },
-      select: { Name: true },
-    });
-    const allowedKeys = new Set(activeFields.map((f) => f.Name));
+    /*     const activeFields = await prisma.propertyFields.findMany({
+          where: { Status: "Active" },
+          select: { Name: true },
+        });
+        const allowedKeys = new Set(activeFields.map((f) => f.Name));
+    
+        const propertyFieldsRaw = body.PropertyFields ? JSON.parse(body.PropertyFields) : {};
+        // --- Build PropertyFields JSON ---
+        const propertyFieldsData = {};
+        for (const key in propertyFieldsRaw) {
+          if (allowedKeys.has(key)) {
+            propertyFieldsData[key] = propertyFieldsRaw[key];
+          }
+        } */
 
-    const propertyFieldsRaw = body.PropertyFields ? JSON.parse(body.PropertyFields) : {};
-    // --- Build PropertyFields JSON ---
-    const propertyFieldsData = {};
-    for (const key in propertyFieldsRaw) {
-      if (allowedKeys.has(key)) {
-        propertyFieldsData[key] = propertyFieldsRaw[key];
-      }
-    }
     const newProperty = await prisma.property.create({
       data: {
         ...body,
         Email: body.Email || undefined,
         PropertyImage: JSON.stringify(PropertyImage),
         AgentImage: JSON.stringify(AgentImage),
-        PropertyFields: propertyFieldsData,
         CreatedById: admin._id || admin.id,
       },
     });
@@ -632,30 +632,30 @@ export const updateProperty = async (req, res, next) => {
     if (!existing) return next(new ApiError(404, "Property not found"));
 
     // --- Get active fields from master ---
-    const activeFields = await prisma.propertyFields.findMany({
-      where: { Status: "Active" },
-      select: { Name: true },
-    });
-    const allowedKeys = new Set(activeFields.map((f) => f.Name));
-
-    // --- Build PropertyFields JSON from request ---
-    const propertyFieldsRaw = req.body.PropertyFields
-      ? typeof req.body.PropertyFields === "string"
-        ? JSON.parse(req.body.PropertyFields)
-        : req.body.PropertyFields
-      : {};
-
-    // --- Merge with existing PropertyFields ---
-    const existingPropertyFields = existing.PropertyFields || {};
-    const mergedPropertyFields = {
-      ...existingPropertyFields,
-      ...Object.fromEntries(
-        Object.entries(propertyFieldsRaw).filter(([key]) =>
-          allowedKeys.has(key)
-        )
-      ),
-    };
-    updateData.PropertyFields = mergedPropertyFields;
+    /*    const activeFields = await prisma.propertyFields.findMany({
+         where: { Status: "Active" },
+         select: { Name: true },
+       });
+       const allowedKeys = new Set(activeFields.map((f) => f.Name));
+   
+       // --- Build PropertyFields JSON from request ---
+       const propertyFieldsRaw = req.body.PropertyFields
+         ? typeof req.body.PropertyFields === "string"
+           ? JSON.parse(req.body.PropertyFields)
+           : req.body.PropertyFields
+         : {};
+   
+       // --- Merge with existing PropertyFields ---
+       const existingPropertyFields = existing.PropertyFields || {};
+       const mergedPropertyFields = {
+         ...existingPropertyFields,
+         ...Object.fromEntries(
+           Object.entries(propertyFieldsRaw).filter(([key]) =>
+             allowedKeys.has(key)
+           )
+         ),
+       };
+       updateData.PropertyFields = mergedPropertyFields; */
 
 
 
