@@ -568,9 +568,18 @@ export const createProperty = async (req, res, next) => {
           }
         } */
 
+          const parsedBody = {
+  ...body,
+
+  // convert float fields
+  Price: body.Price ? parseFloat(body.Price) : undefined,
+
+  // optional: convert other numeric fields if any
+};
+
     const newProperty = await prisma.property.create({
       data: {
-        ...body,
+        ...parsedBody,
         Email: body.Email || undefined,
         PropertyImage: JSON.stringify(PropertyImage),
         AgentImage: JSON.stringify(AgentImage),
