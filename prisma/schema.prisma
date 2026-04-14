@@ -34,6 +34,7 @@ model Admin {
   assignedAIAgents  AIAgent[]  @relation("AIAgentAssignedTo")
   createdCustomers  Customer[] @relation("CustomerCreatedBy")
   createdFollowups  Followup[] @relation("FollowupCreatedBy")
+  createdPropertys  Property[] @relation("PropertyCreatedBy")
 
   assignedContact Contact[] @relation("ContactAssignedTo")
 
