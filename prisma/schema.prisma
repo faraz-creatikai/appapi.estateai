@@ -609,5 +609,5 @@ model Property {
 
   isImported Boolean  @default(false)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime
+  updatedAt  updatedAt
 }
