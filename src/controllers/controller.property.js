@@ -846,10 +846,19 @@ export const updateProperty = async (req, res, next) => {
       updateData.updatedAt = new Date(); // force updatedAt to change
     }
 
+        const parsedBody = {
+      ...updateData,
+
+      // convert float fields
+      Price: updateData.Price ? parseFloat(updateData.Price) : undefined,
+
+      // optional: convert other numeric fields if any
+    };
+
     // UPDATE CUSTOMER
     const updated = await prisma.property.update({
       where: { id },
-      data: updateData,
+      data: parsedBody,
     });
 
     res.status(200).json({
