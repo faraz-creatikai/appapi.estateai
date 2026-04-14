@@ -50,6 +50,15 @@ const transformGetProperty = async (c) => {
     _id: c.id,
     PropertyImage: parseJSON(c.PropertyImage),
     AgentImage: parseJSON(c.AgentImage),
+    CreatedBy: c.CreatedBy
+      ? {
+        id: c.CreatedBy.id,
+        name: c.CreatedBy.name,
+        email: c.CreatedBy.email,
+        role: c.CreatedBy.role,
+        city: c.CreatedBy.city,
+      }
+      : null,
   };
 
 
@@ -340,6 +349,17 @@ export const getProperty = async (req, res, next) => {
         orderBy,
         skip: offset,
         take: REQUIRED * FETCH_MULTIPLIER,
+        include: {
+          CreatedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              city: true,
+            },
+          },
+        },
       });
     } else {
       // If Limit is NOT provided → behave as old flow (fetch all / default DB behavior)
@@ -347,6 +367,17 @@ export const getProperty = async (req, res, next) => {
         where,
         orderBy,
         skip: offset,
+        include: {
+          CreatedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              city: true,
+            },
+          },
+        },
       });
     }
 
@@ -568,14 +599,14 @@ export const createProperty = async (req, res, next) => {
           }
         } */
 
-          const parsedBody = {
-  ...body,
+    const parsedBody = {
+      ...body,
 
-  // convert float fields
-  Price: body.Price ? parseFloat(body.Price) : undefined,
+      // convert float fields
+      Price: body.Price ? parseFloat(body.Price) : undefined,
 
-  // optional: convert other numeric fields if any
-};
+      // optional: convert other numeric fields if any
+    };
 
     const newProperty = await prisma.property.create({
       data: {
