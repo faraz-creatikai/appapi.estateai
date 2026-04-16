@@ -42,13 +42,13 @@ export const acceptRequest = async (req, res) => {
                 name: requestUser.name,
                 email: requestUser.email,
                 password: requestUser.password, // password is already hashed in requestUser
-                role: "user",
+                role: requestUser.role || "client_admin", // default role if not provided
                 city: requestUser.city || null,
                 phone: requestUser.phone || null,
             },
         });
 
-        // Delete the user from requestUser table
+        // Delete the user from  requestUser table
         await prisma.requestUser.delete({
             where: { id },
         });
@@ -126,16 +126,18 @@ export const getAllRequestUser = async (req, res) => {
 };
 
 
-
-
-
-
 export const newUserSignup = async (req, res) => {
-    const { name, email, password,phone } = req.body;
+    const { name, email, password,phone,role } = req.body;
 
     try {
         if (!email || !password || !name || !phone) {
             throw new ApiError(400, "Missing required details");
+        }
+
+        if(role){
+            if(role!=="user" && role!=="client_admin"){
+                  throw new ApiError(403, "Unauthorized User Role");
+            }
         }
 
         // Check if email already exists inside RequestUser
@@ -156,7 +158,8 @@ export const newUserSignup = async (req, res) => {
                 name,
                 email,
                 password: hashedPassword,
-                phone
+                phone,
+                role: role?role:"user"
             },
         });
 
