@@ -455,7 +455,7 @@ export const getCustomer = async (req, res, next) => {
     else if (admin.role === "city_admin") {
       const adminId = admin.id || admin._id;
 
-      // Step 1: campaigns
+      // Step 1: get campaigns
       const assignedCampaignsData = await prisma.customer.findMany({
         where: {
           AssignTo: {
@@ -470,47 +470,33 @@ export const getCustomer = async (req, res, next) => {
         .map(c => c.Campaign)
         .filter(Boolean);
 
-      // ✅ MAIN FIX: separate CREATED logic
+      // STEP 2: GLOBAL CITY FILTER (VERY IMPORTANT)
+      AND.push({
+        City: {
+          equals: admin.city
+        }
+      });
+
+      // STEP 3: ACCESS LOGIC (non-restrictive now)
       AND.push({
         OR: [
-          // 🔥 ALWAYS allow own created data
+          { CreatedById: adminId },
+
           {
-            CreatedById: adminId
+            AssignTo: {
+              some: { id: adminId }
+            }
           },
 
-          // 🔹 Assigned customers (with city restriction)
-          {
-            AND: [
-              {
-                AssignTo: {
-                  some: { id: adminId }
-                }
-              },
-              {
-                City: {
-                  contains: admin.city,
-
-                }
-              }
-            ]
-          },
-
-          // 🔹 Campaign-based access (with city restriction)
           ...(assignedCampaigns.length > 0
             ? [{
-              AND: [
-                {
-                  Campaign: { in: assignedCampaigns }
-                },
-                {
-                  City: {
-                    contains: admin.city,
-
-                  }
-                }
-              ]
+              Campaign: { in: assignedCampaigns }
             }]
-            : [])
+            : []),
+
+          // THIS LINE FIXES YOUR CORE ISSUE
+          // allow other city data even if not assigned/campaign
+          {}
         ]
       });
     }
@@ -1587,8 +1573,8 @@ export const assignCustomer = async (req, res, next) => {
           where: { id: customer.id },
           data: {
             AssignTo: {
-              set: assignToId.map((id) => ({ id })),
-            },
+              connect: assignToId.map((id) => ({ id })),
+            }
           },
         })
       );
