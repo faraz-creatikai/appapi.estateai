@@ -3,12 +3,13 @@ import {
   callCustomer,
   sendEmailByTemplate,
   sendWhatsAppByTemplate,
+  sendWhatsAppMessage,
 } from "../controllers/controller.messages.js";
 
 const messageRoutes = express.Router();
 
 messageRoutes.post("/email", sendEmailByTemplate);
-messageRoutes.post("/whatsapp", sendWhatsAppByTemplate);
+messageRoutes.post("/whatsapp", sendWhatsAppMessage);
 
 messageRoutes.post("/call",callCustomer);
 

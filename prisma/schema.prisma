@@ -492,6 +492,7 @@ model RequestUser {
   email    String
   password String
   phone    String?
+  role     String?
 }
 
 model CustomerFieldLabel {
@@ -597,6 +598,7 @@ model Property {
   GoogleMap       String? @default("")
   URL             String? @default("")
   Price           Float?  @default(0)
+  Status          String? @default("")
   Features        Json?   @default("[]")
   PropertyImage   Json?   @default("[]")
   AgentImage      Json?   @default("[]")
@@ -614,5 +616,100 @@ model Property {
 
   isImported Boolean  @default(false)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  updatedAt  DateTime
+}
+
+model FacebookPost {
+  id String @id @default(cuid())
+
+  postId  String? @unique
+  groupId String?
+
+  title String?
+  text  String  @db.LongText
+
+  url          String? @unique
+  externalLink String?
+
+  author   String?
+  authorId String?
+
+  likes    Int @default(0)
+  comments Int @default(0)
+  shares   Int @default(0)
+
+  engagementScore Int @default(0)
+
+  media Json? // array of image/video URLs
+
+  hasMedia Boolean @default(false)
+  isVideo  Boolean @default(false)
+
+  createdAt DateTime?
+  timestamp BigInt?
+
+  scrapedAt DateTime @default(now())
+
+  source String @default("facebook")
+
+  @@index([groupId])
+  @@index([engagementScore])
+  @@index([createdAt])
+}
+
+model InstagramPost {
+  id String @id @default(cuid())
+
+  postId  String? @unique
+  groupId String?
+
+  title String?
+  text  String  @db.LongText
+
+  url          String? @unique
+  externalLink String?
+
+  author   String?
+  authorId String?
+
+  likes    Int @default(0)
+  comments Int @default(0)
+  shares   Int @default(0)
+
+  engagementScore Int @default(0)
+
+  media Json? // array of image/video URLs
+
+  hasMedia Boolean @default(false)
+  isVideo  Boolean @default(false)
+
+  createdAt DateTime?
+  timestamp BigInt?
+
+  scrapedAt DateTime @default(now())
+
+  source String @default("facebook")
+
+  @@index([groupId])
+  @@index([engagementScore])
+  @@index([createdAt])
+}
+
+// Simple. No engagement noise. url is unique to prevent duplicate saves.
+
+model MinedLead {
+  id          String    @id @default(cuid())
+  source      String // 'reddit' | 'facebook' | 'instagram'
+  author      String? // display name / username
+  authorId    String? // platform UID (FB authorId, Reddit u/handle)
+  title       String?   @db.VarChar(512)
+  content     String    @db.Text // post body / caption
+  url         String    @unique // deduplication key
+  postContext String? // subreddit name, FB page name, IG hashtag, etc.
+  postedAt    DateTime? // original post timestamp if available
+  savedAt     DateTime  @default(now())
+
+  @@index([source])
+  @@index([savedAt])
+  @@map("mined_leads")
 }
