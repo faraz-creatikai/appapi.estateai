@@ -589,6 +589,7 @@ model Property {
   Facillities     Json?   @default("{}")
   ReferenceId     String? @default("")
   PropertyId      String? @default("")
+  ClientId        String? @default("")
   PropertyDate    String? @default("")
   PropertyYear    String? @default("")
   Other           String? @default("")

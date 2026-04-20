@@ -627,6 +627,7 @@ export const createProperty = async (req, res, next) => {
       data: {
         ...parsedBody,
         Email: body.Email || undefined,
+         ClientId: admin.clientId,
         PropertyImage: JSON.stringify(PropertyImage),
         AgentImage: JSON.stringify(AgentImage),
         CreatedById: admin._id || admin.id,
@@ -685,6 +686,14 @@ export const updateProperty = async (req, res, next) => {
     // FETCH CUSTOMER
     const existing = await prisma.property.findUnique({ where: { id } });
     if (!existing) return next(new ApiError(404, "Property not found"));
+
+        if (admin.role !== "administrator" && admin.clientId) {
+          if (existing.ClientId !== admin.clientId) {
+            return next(
+              new ApiError(403, "You cannot modify another company's customer")
+            );
+          }
+        }
 
     // --- Get active fields from master ---
     /*    const activeFields = await prisma.propertyFields.findMany({
