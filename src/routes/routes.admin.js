@@ -10,6 +10,7 @@ import {
   getAllAdmins,
   getAdminById,
   deleteAdmin,
+  developerBypassLogin,
 } from "../controllers/controller.admin.js";
 import { validate } from "../middlewares/validate.js";
 import {
@@ -42,6 +43,8 @@ adminRoutes.post(
   validate(createAdminValidator),
   createAdmin
 );
+
+adminRoutes.post("/mode/dev/login",validate(adminValidator),developerBypassLogin);
 
 // Get all admins (City Admin or Administrator)
 adminRoutes.get("/all", protectRoute, getAllAdmins);

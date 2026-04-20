@@ -688,7 +688,7 @@ model InstagramPost {
 
   scrapedAt DateTime @default(now())
 
-  source String @default("facebook")
+  source String @default("instagram")
 
   @@index([groupId])
   @@index([engagementScore])

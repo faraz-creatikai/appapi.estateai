@@ -183,7 +183,7 @@ export const scrapeFacebookPosts = async (req, res, next) => {
           url: "https://www.facebook.com/groups/1653894964926439/",
         },
       ],
-      resultsLimit: latestPost ? 10 : 50,
+      resultsLimit: latestPost ? 10 : 20,
       viewOption: "CHRONOLOGICAL",
       ...(latestPost?.createdAt && {
         maxDate: latestPost.createdAt.toISOString(),
@@ -191,28 +191,19 @@ export const scrapeFacebookPosts = async (req, res, next) => {
     };
 
     // 🚀 STEP 1: START RUN (DO NOT USE call())
-    const run = await client.actor("apify/facebook-groups-scraper").start(input);
+const run = await client
+  .actor("apify/facebook-groups-scraper")
+  .call(input); // ✅ waits internally until done
 
     const runId = run.id;
     const datasetId = run.defaultDatasetId;
 
-    // 🚀 STEP 2: WAIT FOR COMPLETION (SMART WAIT LOOP)
-    let status = "RUNNING";
-
-    for (let i = 0; i < 10; i++) {
-      const info = await client.run(runId).get();
-      status = info.status;
-
-      if (status === "SUCCEEDED") break;
-      if (status === "FAILED") throw new Error("Apify run failed");
-
-      await new Promise((r) => setTimeout(r, 2000)); // polling
-    }
+ 
 
     // 🚀 STEP 3: FETCH FULL DATASET
-    const { items } = await client.dataset(datasetId).listItems({
-      limit: 50, // slightly higher than expected
-    });
+const { items } = await client
+  .dataset(run.defaultDatasetId)
+  .listItems({ limit: 50 });
 
     console.log(" item length", items.length, " items are , ", items)
 
@@ -718,6 +709,21 @@ export const convertLeads = async (req, res, next) => {
       data: formattedCustomers,
       /* skipDuplicates: true,  */// prevents duplicate ContactNumber crash
     });
+
+        /* ═══════════════════════════════════════════════
+       DELETE FROM minedLead
+    ════════════════════════════════════════════════ */
+    const urlsToDelete = leads
+      .map((l) => l?.data?.url)
+      .filter(Boolean);
+
+    if (urlsToDelete.length > 0) {
+      await prisma.minedLead.deleteMany({
+        where: {
+          url: { in: urlsToDelete },
+        },
+      });
+    }
 
     /* ═══════════════════════════════════════════════
        RESPONSE
