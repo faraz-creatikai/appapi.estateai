@@ -22,6 +22,8 @@ model Admin {
   company  String?
   clientId String?
   campaign String?
+  experience string?
+  specialization string?
 
   // Self Relation (creator)
   createdBy    String?

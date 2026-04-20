@@ -85,6 +85,8 @@ export const createAdmin = async (req, res) => {
     company,
     AddressLine1,
     AddressLine2,
+    experience,
+    specialization,
   } = req.body;
 
   try {
@@ -168,6 +170,8 @@ export const createAdmin = async (req, res) => {
         AddressLine2,
         createdBy: currentAdmin.id,
         clientId,
+        experience,
+        specialization,
       },
     });
 
