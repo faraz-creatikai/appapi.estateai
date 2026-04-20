@@ -170,11 +170,28 @@ export const getFacebookPosts = async (req, res, next) => {
 export const scrapeFacebookPosts = async (req, res, next) => {
   try {
 
-    const { groupUrls = [], limit } = req.body;
+    const { groupUrls = [], limit, days } = req.body;
 
     const latestPost = await prisma.facebookPost.findFirst({
       orderBy: { createdAt: "desc" },
     });
+
+    //buffer limit latest post - 30 min 
+
+    const bufferMinutes = 30; // tweak (15–60 works best)
+
+    const bufferedDate = latestPost?.createdAt
+      ? new Date(latestPost.createdAt.getTime() - bufferMinutes * 60 * 1000)
+      : null;
+
+    //LATEST BY DAY
+
+    const daysToUse = typeof days === "number" ? days : 1;
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysToUse);
+    startDate.setHours(0, 0, 0, 0);
+
 
     const client = new ApifyClient({
       token: process.env.APIFY_ACCESS_TOKEN,
@@ -195,16 +212,17 @@ export const scrapeFacebookPosts = async (req, res, next) => {
       typeof limit === "number"
         ? limit
         : latestPost
-        ? 10
-        : 20;
+          ? 10
+          : 20;
 
     const input = {
-      startUrls: urlsToUse.map((url) => ({ url })), // 🔥 dynamic + fallback
-      resultsLimit: resultsLimit, // 🔥 optional limit
+      startUrls: urlsToUse.map((url) => ({ url })), // dynamic + fallback
+      resultsLimit: resultsLimit, // optional limit
       viewOption: "CHRONOLOGICAL",
-      ...(latestPost?.createdAt && {
-        maxDate: latestPost.createdAt.toISOString(),
-      }),
+      minDate: startDate.toISOString(),
+      /* ...(latestPost?.createdAt && {
+        maxDate: bufferedDate.toISOString(),
+      }), */
     };
 
     // 🚀 STEP 1: START RUN (DO NOT USE call())
@@ -394,11 +412,28 @@ export const getInstagramPosts = async (req, res, next) => {
 
 export const scrapeInstagramPosts = async (req, res, next) => {
   try {
-    const { hashtags = [], limit } = req.body;
+    const { hashtags = [], limit, days } = req.body;
 
     const latestPost = await prisma.instagramPost.findFirst({
       orderBy: { createdAt: "desc" },
     });
+
+    //buffer limit latest post - 30 min 
+
+    const bufferMinutes = 30; // tweak (15–60 works best)
+
+    const bufferedDate = latestPost?.createdAt
+      ? new Date(latestPost.createdAt.getTime() - bufferMinutes * 60 * 1000)
+      : null;
+
+
+    // START DATE
+
+    const daysToUse = typeof days === "number" ? days : 1;
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysToUse);
+    startDate.setHours(0, 0, 0, 0);
 
     const client = new ApifyClient({
       token: process.env.APIFY_ACCESS_TOKEN,
@@ -433,9 +468,7 @@ export const scrapeInstagramPosts = async (req, res, next) => {
       directUrls,
       resultsType: "posts",
       resultsLimit: resultsLimit,
-      ...(latestPost?.createdAt && {
-        maxDate: latestPost.createdAt.toISOString()
-      }),
+      minDate: startDate.toISOString(),
     };
 
     // ✅ use CALL (auto wait)
@@ -590,13 +623,39 @@ export const saveMinedLeads = async (req, res, next) => {
 
     let savedCount = 0;
 
+    // ✅ 1. Save new leads
     if (newLeads.length > 0) {
       const result = await prisma.minedLead.createMany({
         data: newLeads,
-        skipDuplicates: true, // extra safety
+        skipDuplicates: true,
       });
 
       savedCount = result.count;
+    }
+
+    // ✅ 2. ALWAYS delete from source tables (based on ALL selected leads)
+    const facebookUrls = formattedLeads
+      .filter((l) => l.source === "facebook")
+      .map((l) => l.url);
+
+    const instagramUrls = formattedLeads
+      .filter((l) => l.source === "instagram")
+      .map((l) => l.url);
+
+    if (facebookUrls.length > 0) {
+      await prisma.facebookPost.deleteMany({
+        where: {
+          url: { in: facebookUrls },
+        },
+      });
+    }
+
+    if (instagramUrls.length > 0) {
+      await prisma.instagramPost.deleteMany({
+        where: {
+          url: { in: instagramUrls },
+        },
+      });
     }
 
     return res.status(200).json({
@@ -690,9 +749,9 @@ export const convertLeads = async (req, res, next) => {
       });
     }
 
-      /* ═══════════════════════════════════════════════
-       FETCH VALID REFERENCES (only once)
-    ════════════════════════════════════════════════ */
+    /* ═══════════════════════════════════════════════
+     FETCH VALID REFERENCES (only once)
+  ════════════════════════════════════════════════ */
     const references = await prisma.reference.findMany({
       where: {
         Status: "Active", // optional but recommended
@@ -712,7 +771,7 @@ export const convertLeads = async (req, res, next) => {
     ════════════════════════════════════════════════ */
     const formattedCustomers = leads.map((item) => {
       const data = item?.data || {};
-  const source = data?.source?.toLowerCase();
+      const source = data?.source?.toLowerCase();
       return {
         Campaign: item?.Campaign || "",
         customerName: data?.author?.trim() || "N/A",
@@ -739,9 +798,9 @@ export const convertLeads = async (req, res, next) => {
       /* skipDuplicates: true,  */// prevents duplicate ContactNumber crash
     });
 
-        /* ═══════════════════════════════════════════════
-       DELETE FROM minedLead
-    ════════════════════════════════════════════════ */
+    /* ═══════════════════════════════════════════════
+   DELETE FROM minedLead
+════════════════════════════════════════════════ */
     const urlsToDelete = leads
       .map((l) => l?.data?.url)
       .filter(Boolean);

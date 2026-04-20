@@ -83,10 +83,10 @@ export const createAdmin = async (req, res) => {
     city,
     phone,
     company,
-    AddressLine1,
-    AddressLine2,
     experience,
     specialization,
+    AddressLine1,
+    AddressLine2,
   } = req.body;
 
   try {
@@ -168,10 +168,10 @@ export const createAdmin = async (req, res) => {
         company: company || null,
         AddressLine1,
         AddressLine2,
-        createdBy: currentAdmin.id,
-        clientId,
         experience,
         specialization,
+        createdBy: currentAdmin.id,
+        clientId,
       },
     });
 
@@ -509,7 +509,12 @@ export const getAllAdmins = async (req, res) => {
     const admins = await prisma.admin.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      include: { assignedAIAgents: true }
+      include: {
+        assignedAIAgents: true, 
+        createdPropertys: true,
+        createdCustomers: true,
+        createdFollowups: true,
+      }
     });
 
     res.json({
