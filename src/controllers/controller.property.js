@@ -237,6 +237,21 @@ export const getProperty = async (req, res, next) => {
     // ROLE-BASED FILTERS
     // --------------------------------------------
 
+    if (admin.role !== "administrator" && admin.clientId) {
+      AND.push({
+        OR: [
+          { ClientId: admin.clientId },
+          { CreatedById: admin.id || admin._id }
+        ]
+      });
+    }
+
+    if (admin.role === "city_admin") {
+      AND.push({ City: { contains: admin.city } });
+    } else if (admin.role === "user") {
+      AND.push({ AssignToId: admin.id || admin._id });
+    }
+
 
     // --------------------------------------------
     // BASIC FILTERS
@@ -846,7 +861,7 @@ export const updateProperty = async (req, res, next) => {
       updateData.updatedAt = new Date(); // force updatedAt to change
     }
 
-        const parsedBody = {
+    const parsedBody = {
       ...updateData,
 
       // convert float fields

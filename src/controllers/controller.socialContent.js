@@ -163,27 +163,44 @@ export const getFacebookPosts = async (req, res, next) => {
     next(new ApiError(500, error.message));
   }
 };
+
+
 //scrape facebook data 
 
 export const scrapeFacebookPosts = async (req, res, next) => {
   try {
 
+    const { groupUrls = [], limit } = req.body;
+
     const latestPost = await prisma.facebookPost.findFirst({
       orderBy: { createdAt: "desc" },
     });
-
 
     const client = new ApifyClient({
       token: process.env.APIFY_ACCESS_TOKEN,
     });
 
+    // ✅ DEFAULT FALLBACK (only change)
+    const DEFAULT_GROUPS = [
+      "https://www.facebook.com/groups/1653894964926439/",
+    ];
+
+    const urlsToUse =
+      Array.isArray(groupUrls) && groupUrls.length > 0
+        ? groupUrls
+        : DEFAULT_GROUPS;
+
+    // ✅ OPTIONAL LIMIT (only change)
+    const resultsLimit =
+      typeof limit === "number"
+        ? limit
+        : latestPost
+        ? 10
+        : 20;
+
     const input = {
-      startUrls: [
-        {
-          url: "https://www.facebook.com/groups/1653894964926439/",
-        },
-      ],
-      resultsLimit: latestPost ? 10 : 20,
+      startUrls: urlsToUse.map((url) => ({ url })), // 🔥 dynamic + fallback
+      resultsLimit: resultsLimit, // 🔥 optional limit
       viewOption: "CHRONOLOGICAL",
       ...(latestPost?.createdAt && {
         maxDate: latestPost.createdAt.toISOString(),
@@ -191,25 +208,23 @@ export const scrapeFacebookPosts = async (req, res, next) => {
     };
 
     // 🚀 STEP 1: START RUN (DO NOT USE call())
-const run = await client
-  .actor("apify/facebook-groups-scraper")
-  .call(input); // ✅ waits internally until done
+    const run = await client
+      .actor("apify/facebook-groups-scraper")
+      .call(input); // ✅ waits internally until done
 
     const runId = run.id;
     const datasetId = run.defaultDatasetId;
 
- 
-
     // 🚀 STEP 3: FETCH FULL DATASET
-const { items } = await client
-  .dataset(run.defaultDatasetId)
-  .listItems({ limit: 50 });
+    const { items } = await client
+      .dataset(run.defaultDatasetId)
+      .listItems({ limit: 50 });
 
-    console.log(" item length", items.length, " items are , ", items)
+    console.log(" item length", items.length, " items are , ", items);
 
     const posts = items || [];
 
-    // 🚀 STEP 4: CLEAN + SAVE (FINAL FIXED)
+    // 🚀 STEP 4: CLEAN + SAVE (UNCHANGED)
 
     const cleaned = [];
 
@@ -275,7 +290,7 @@ const { items } = await client
         // ✅ UPSERT USING URL (100% SAFE)
         await prisma.facebookPost.upsert({
           where: {
-            url: url, // 🔥 FIXED (this matches your schema unique)
+            url: url,
           },
           update: {
             ...data,
@@ -379,6 +394,8 @@ export const getInstagramPosts = async (req, res, next) => {
 
 export const scrapeInstagramPosts = async (req, res, next) => {
   try {
+    const { hashtags = [], limit } = req.body;
+
     const latestPost = await prisma.instagramPost.findFirst({
       orderBy: { createdAt: "desc" },
     });
@@ -387,7 +404,8 @@ export const scrapeInstagramPosts = async (req, res, next) => {
       token: process.env.APIFY_ACCESS_TOKEN,
     });
 
-    const hashtags = [
+    // ✅ DEFAULT FALLBACK (only change)
+    const DEFAULT_HASHTAGS = [
       "realestate",
       "realestateindia",
       "propertyindia",
@@ -396,14 +414,25 @@ export const scrapeInstagramPosts = async (req, res, next) => {
       "jaipurproperties"
     ];
 
-    const directUrls = hashtags.map(
+    const tagsToUse =
+      Array.isArray(hashtags) && hashtags.length > 0
+        ? hashtags
+        : DEFAULT_HASHTAGS;
+
+    const directUrls = tagsToUse.map(
       tag => `https://www.instagram.com/explore/tags/${tag}/`
     );
+
+    // ✅ OPTIONAL LIMIT (only change)
+    const resultsLimit =
+      typeof limit === "number"
+        ? limit
+        : 2;
 
     const input = {
       directUrls,
       resultsType: "posts",
-      resultsLimit: 2,
+      resultsLimit: resultsLimit,
       ...(latestPost?.createdAt && {
         maxDate: latestPost.createdAt.toISOString()
       }),
