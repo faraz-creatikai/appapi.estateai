@@ -87,8 +87,8 @@ export const updateAdminValidator = [
     .withMessage("City name must be at least 2 characters long"),
   body("status")
     .optional()
-    .isIn(["Active", "Inactive"])
-    .withMessage("Status must be either 'Active' or 'Inactive'"),
+    .isIn(["active", "inactive"])
+    .withMessage("Status must be either 'active' or 'inactive'"),
 ];
 
 // Update password validator

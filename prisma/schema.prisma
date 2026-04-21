@@ -19,11 +19,12 @@ model Admin {
   AddressLine1 String?     @default("")
   AddressLine2 String?     @default("")
 
-  company  String?
-  clientId String?
-  campaign String?
-  experience String?
+  company        String?
+  clientId       String?
+  campaign       String?
+  experience     String?
   specialization String?
+  AdminImage     Json?   @default("[]")
 
   // Self Relation (creator)
   createdBy    String?
