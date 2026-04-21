@@ -490,12 +490,17 @@ model ContactFollowup {
 }
 
 model RequestUser {
-  id       String  @id @default(uuid())
-  name     String
-  email    String
-  password String
-  phone    String?
-  role     String?
+  id             String  @id @default(uuid())
+  name           String
+  email          String
+  password       String
+  phone          String?
+  role           String?
+  company        String?
+  specialization String?
+  city           String?
+  experience     String?
+  image          Json?   @default("[]")
 }
 
 model CustomerFieldLabel {
