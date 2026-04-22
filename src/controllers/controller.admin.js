@@ -371,9 +371,9 @@ export const updateAdminDetails = async (req, res) => {
       // fallback to existing DB images
       AdminImage = safeParse(targetAdmin.AdminImage) || [];
     }
-   console.log("RAW removedAdminImages:", req.body.removedAdminImages);
-console.log("PARSED removedAdminImages:", updates.removedAdminImages);
-console.log("TYPE:", typeof updates.removedAdminImages);
+    console.log("RAW removedAdminImages:", req.body.removedAdminImages);
+    console.log("PARSED removedAdminImages:", updates.removedAdminImages);
+    console.log("TYPE:", typeof updates.removedAdminImages);
 
     // REMOVE SPECIFIC CUSTOMER IMAGES
     if (updates.removedAdminImages.length > 0) {
@@ -388,12 +388,12 @@ console.log("TYPE:", typeof updates.removedAdminImages);
         })
       );
 
-     AdminImage = AdminImage.filter(
-  (img) =>
-    !updates.removedAdminImages.some(
-      (removed) => removed.trim() === img.trim()
-    )
-);
+      AdminImage = AdminImage.filter(
+        (img) =>
+          !updates.removedAdminImages.some(
+            (removed) => removed.trim() === img.trim()
+          )
+      );
 
       console.log(" wow here is ", AdminImage)
     }
@@ -633,6 +633,38 @@ export const getAllAdmins = async (req, res) => {
     } else {
       throw new ApiError(403, "Access denied");
     }
+
+    const admins = await prisma.admin.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        assignedAIAgents: true,
+        createdPropertys: true,
+        createdCustomers: true,
+        createdFollowups: true,
+      }
+    });
+
+    res.json({
+      success: true,
+      count: admins.length,
+      admins: admins.map(transform),
+    });
+  } catch (error) {
+    console.log(error.message);
+    res
+      .status(error instanceof ApiError ? error.statusCode : 500)
+      .json({ success: false, message: error.message });
+  }
+};
+
+export const getAllClientAdmin = async (req, res) => {
+  try {
+
+
+    let where = {};
+    where.role = "client_admin";
+
 
     const admins = await prisma.admin.findMany({
       where,
