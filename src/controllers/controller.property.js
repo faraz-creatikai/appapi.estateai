@@ -205,7 +205,7 @@ function deduplicateByContact(propertys) {
 // ------------------------------------------------------
 export const getProperty = async (req, res, next) => {
   try {
-    const admin = req.admin;
+  /*   const admin = req.admin; */
 
     const {
       Campaign,
@@ -237,7 +237,7 @@ export const getProperty = async (req, res, next) => {
     // ROLE-BASED FILTERS
     // --------------------------------------------
 
-    if (admin.role !== "administrator" && admin.clientId) {
+/*     if (admin.role !== "administrator" && admin.clientId) {
       AND.push({
         OR: [
           { ClientId: admin.clientId },
@@ -250,7 +250,7 @@ export const getProperty = async (req, res, next) => {
       AND.push({ City: { contains: admin.city } });
     } else if (admin.role === "user") {
       AND.push({ AssignToId: admin.id || admin._id });
-    }
+    } */
 
 
     // --------------------------------------------
