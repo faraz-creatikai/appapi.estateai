@@ -53,7 +53,7 @@ app.use(
       "http://localhost:5678/",
       "https://app.estateai.in",
       "https://estateai.in",
-      "https://estateai-backuped.vercel.app"
+      "https://estateai-lead.vercel.app"
 
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
