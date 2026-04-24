@@ -32,7 +32,7 @@ propertyRoutes.post(
 
 propertyRoutes.put(
   "/:id",
-  propertyRoutes,
+  protectRoute,
   upload.fields([
     { name: "PropertyImage", maxCount: 5 },
     { name: "AgentImage", maxCount: 5 },
