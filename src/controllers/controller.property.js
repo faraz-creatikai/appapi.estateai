@@ -205,7 +205,7 @@ function deduplicateByContact(propertys) {
 // ------------------------------------------------------
 export const getProperty = async (req, res, next) => {
   try {
-  /*   const admin = req.admin; */
+    /*   const admin = req.admin; */
 
     const {
       Campaign,
@@ -237,20 +237,20 @@ export const getProperty = async (req, res, next) => {
     // ROLE-BASED FILTERS
     // --------------------------------------------
 
-/*     if (admin.role !== "administrator" && admin.clientId) {
-      AND.push({
-        OR: [
-          { ClientId: admin.clientId },
-          { CreatedById: admin.id || admin._id }
-        ]
-      });
-    }
-
-    if (admin.role === "city_admin") {
-      AND.push({ City: { contains: admin.city } });
-    } else if (admin.role === "user") {
-      AND.push({ AssignToId: admin.id || admin._id });
-    } */
+    /*     if (admin.role !== "administrator" && admin.clientId) {
+          AND.push({
+            OR: [
+              { ClientId: admin.clientId },
+              { CreatedById: admin.id || admin._id }
+            ]
+          });
+        }
+    
+        if (admin.role === "city_admin") {
+          AND.push({ City: { contains: admin.city } });
+        } else if (admin.role === "user") {
+          AND.push({ AssignToId: admin.id || admin._id });
+        } */
 
 
     // --------------------------------------------
@@ -627,7 +627,7 @@ export const createProperty = async (req, res, next) => {
       data: {
         ...parsedBody,
         Email: body.Email || undefined,
-         ClientId: admin.clientId,
+        ClientId: admin.clientId,
         PropertyImage: JSON.stringify(PropertyImage),
         AgentImage: JSON.stringify(AgentImage),
         CreatedById: admin._id || admin.id,
@@ -675,8 +675,21 @@ export const updateProperty = async (req, res, next) => {
     };
 
     // PARSE FIELDS FROM FRONTEND
-    updateData.PropertyImage = safeParse(updateData.PropertyImage);
-    updateData.AgentImage = safeParse(updateData.AgentImage);
+    if (
+      req.files?.PropertyImage ||
+      updateData.removedPropertyImages?.length > 0 ||
+      updateData.PropertyImage !== undefined
+    ) {
+      updateData.PropertyImage = JSON.stringify(PropertyImage);
+    }
+
+    if (
+      req.files?.AgentImage ||
+      updateData.removedAgentImages?.length > 0 ||
+      updateData.AgentImage !== undefined
+    ) {
+      updateData.AgentImage = JSON.stringify(AgentImage);
+    }
 
     updateData.removedPropertyImages =
       safeParse(updateData.removedPropertyImages) || [];
@@ -687,13 +700,13 @@ export const updateProperty = async (req, res, next) => {
     const existing = await prisma.property.findUnique({ where: { id } });
     if (!existing) return next(new ApiError(404, "Property not found"));
 
-        if (admin.role !== "administrator" && admin.clientId) {
-          if (existing.ClientId !== admin.clientId) {
-            return next(
-              new ApiError(403, "You cannot modify another company's customer")
-            );
-          }
-        }
+    if (admin.role !== "administrator" && admin.clientId) {
+      if (existing.ClientId !== admin.clientId) {
+        return next(
+          new ApiError(403, "You cannot modify another company's customer")
+        );
+      }
+    }
 
     // --- Get active fields from master ---
     /*    const activeFields = await prisma.propertyFields.findMany({
