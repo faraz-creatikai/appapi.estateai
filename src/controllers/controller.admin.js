@@ -661,10 +661,6 @@ export const getAllAdmins = async (req, res) => {
 //GET ALL CLIENT ADMINS
 export const getClientAdmins = async (req, res) => {
   try {
-    const currentAdmin = req.admin;
-    if (currentAdmin.role !== "administrator") {
-      throw new ApiError(403, "Only administrators can view client admins");
-    }
 
     const clientAdmins = await prisma.admin.findMany({
       where: { role: "client_admin" },
