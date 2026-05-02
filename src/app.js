@@ -54,7 +54,6 @@ app.use(
       "http://localhost:5678/",
       "https://app.estateai.in",
       "https://estateai.in",
-      "https://www.estateai.in",
       "https://estateai-lead.vercel.app"
 
     ],

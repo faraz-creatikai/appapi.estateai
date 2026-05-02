@@ -658,6 +658,38 @@ export const getAllAdmins = async (req, res) => {
   }
 };
 
+//GET ALL CLIENT ADMINS
+export const getClientAdmins = async (req, res) => {
+  try {
+    const currentAdmin = req.admin;
+    if (currentAdmin.role !== "administrator") {
+      throw new ApiError(403, "Only administrators can view client admins");
+    }
+
+    const clientAdmins = await prisma.admin.findMany({
+      where: { role: "client_admin" },
+      orderBy: { createdAt: "desc" },
+      include: {
+        assignedAIAgents: true,
+        createdPropertys: true,
+        createdCustomers: true,
+        createdFollowups: true,
+      }
+    });
+
+    res.json({
+      success: true,
+      count: clientAdmins.length,
+      clientAdmins: clientAdmins.map(transform),
+    });
+  } catch (error) {
+    console.log(error.message);
+    res
+      .status(error instanceof ApiError ? error.statusCode : 500)
+      .json({ success: false, message: error.message });
+  }
+};
+
 
 export const developerBypassLogin = async (req, res, next) => {
   try {
