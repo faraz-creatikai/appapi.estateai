@@ -666,7 +666,7 @@ export const getCustomer = async (req, res, next) => {
             { createdAt: "desc" }
           ],
           distinct: ["ContactNumber"],
-          skip: 0,
+          skip: offset,
           take: BUFFER, // ✅ changed
           include: { AssignTo: true }
         });
@@ -679,7 +679,7 @@ export const getCustomer = async (req, res, next) => {
         });
 
         // ✅ FINAL LIMIT APPLY HERE ONLY
-        customers = customers.slice(0, REQUIRED);
+        customers = customers.slice(offset, offset + REQUIRED);
       } else {
         customers = await prisma.customer.findMany({
           where,

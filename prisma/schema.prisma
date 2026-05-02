@@ -41,8 +41,9 @@ model Admin {
 
   assignedContact Contact[] @relation("ContactAssignedTo")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  scheduledPosts ScheduledPost[]
 }
 
 enum Role {
@@ -269,7 +270,7 @@ model Template {
   name          String   @unique
   type          String // email | whatsapp
   subject       String   @default("")
-  body          String
+  body          String   @db.LongText
   description   String   @default("")
   whatsappImage Json?    @default("[]")
   createdBy     String   @default("system")
@@ -721,4 +722,47 @@ model MinedLead {
   @@index([source])
   @@index([savedAt])
   @@map("mined_leads")
+}
+
+model SocialAccount {
+  id          String  @id @default(cuid())
+  userId      String
+  platform    String // INSTAGRAM
+  accessToken String  @db.LongText
+  igAccountId String
+  pageId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, platform])
+}
+
+model ScheduledPost {
+  id      String @id @default(cuid())
+  adminId String
+  admin   Admin  @relation(fields: [adminId], references: [id]) // Assumes you have a User model
+
+  // Post Content
+  imageUrl String  @db.Text
+  caption  String? @db.Text
+
+  // Meta Specifics
+  platform    String  @default("INSTAGRAM")
+  igAccountId String
+  containerId String? // The ID returned by Step 3 (Media Container)
+  scheduledId String? // The ID returned by Step 4 (Scheduled Object)
+
+  // Timing
+  scheduledTime DateTime
+  status        PostStatus @default(SCHEDULED) // Enum: SCHEDULED, PUBLISHED, FAILED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PostStatus {
+  SCHEDULED
+  PUBLISHED
+  FAILED
 }

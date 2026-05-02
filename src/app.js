@@ -43,6 +43,7 @@ import leadtypeRoutes from "./routes/route.leadtype.js";
 import airteliqCallRoutes from "./routes/route.airteliq.js";
 import socialContentRoutes from "./routes/route.socialContent.js";
 import propertyRoutes from "./routes/route.property.js";
+import socialAuthRoutes from "./routes/route.socialAuth.js";
 const app = express();
 app.use(cookieParser());
 
@@ -53,7 +54,6 @@ app.use(
       "http://localhost:5678/",
       "https://app.estateai.in",
       "https://estateai.in",
-      "https://www.estateai.in",
       "https://estateai-lead.vercel.app"
 
     ],
@@ -104,6 +104,7 @@ app.use("/api/customerfieldlabels",customerFieldLabelRoutes)
 app.use("/api/aiagent",aiAgentRoutes)
 app.use("/api/airteliq", airteliqCallRoutes);
 app.use("/api/social-content", socialContentRoutes);
+app.use("/api/social-auth",socialAuthRoutes);
 app.use("/api/property", propertyRoutes);
 
 app.use(errorHandler);

@@ -11,7 +11,6 @@ import {
   getAdminById,
   deleteAdmin,
   developerBypassLogin,
-  getAllClientAdmin,
 } from "../controllers/controller.admin.js";
 import { validate } from "../middlewares/validate.js";
 import {
@@ -53,7 +52,6 @@ adminRoutes.post("/mode/dev/login", validate(adminValidator), developerBypassLog
 
 // Get all admins (City Admin or Administrator)
 adminRoutes.get("/all", protectRoute, getAllAdmins);
-adminRoutes.get("/all/client",getAllClientAdmin);
 
 // Get single admin by ID
 adminRoutes.get("/:id", protectRoute, getAdminById);

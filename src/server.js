@@ -3,6 +3,10 @@ dotenv.config();
 
 import app from "./app.js";
 import { syncCallLogsInternal } from "./jobs/syncCallLogs.js";
+import { initFacebookCron, initInstagramCron } from "./jobs/instagramScheduler.js";
+
+initInstagramCron();
+initFacebookCron();
 
 const PORT = process.env.PORT || 5000;
 

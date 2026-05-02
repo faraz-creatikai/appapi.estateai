@@ -13,7 +13,7 @@ import { createProperty, deleteAllPropertys, deleteProperty, getFavouritePropert
 const propertyRoutes = express.Router();
 
 // ✅ Protected Routes
-/* propertyRoutes.use(protectRoute); */
+propertyRoutes.use(protectRoute);
 
 // 🧭 Base CRUD Routes
 propertyRoutes.get("/", getProperty);
@@ -21,7 +21,6 @@ propertyRoutes.get("/:id", getPropertyById);
 
 propertyRoutes.post(
   "/",
-  protectRoute,
   upload.fields([
     { name: "PropertyImage", maxCount: 5 },
     { name: "AgentImage", maxCount: 5 },
@@ -32,7 +31,6 @@ propertyRoutes.post(
 
 propertyRoutes.put(
   "/:id",
-  protectRoute,
   upload.fields([
     { name: "PropertyImage", maxCount: 5 },
     { name: "AgentImage", maxCount: 5 },
@@ -42,10 +40,10 @@ propertyRoutes.put(
 );
 
 
-propertyRoutes.delete("/:id",propertyRoutes, deleteProperty);
-propertyRoutes.delete("/",propertyRoutes, deleteAllPropertys);
+propertyRoutes.delete("/:id", deleteProperty);
+propertyRoutes.delete("/", deleteAllPropertys);
 
-propertyRoutes.get("/favourites/all",propertyRoutes, getFavouritePropertys);
+propertyRoutes.get("/favourites/all", getFavouritePropertys);
 
 // 🧩 1️⃣ New API → Read headers from uploaded Excel
 /* propertyRoutes.post(
@@ -65,6 +63,6 @@ propertyRoutes.get("/favourites/all",propertyRoutes, getFavouritePropertys);
   importPropertys
 ); */
 
-propertyRoutes.get("/no, checkPhoneExists",propertyRoutes);
+propertyRoutes.get("/no, checkPhoneExists");
 
 export default propertyRoutes;
