@@ -41,6 +41,9 @@ model Admin {
 
   assignedContact Contact[] @relation("ContactAssignedTo")
 
+  recievedNotification Notification[] @relation("NotificationReceiver")
+  sendNotification     Notification[] @relation("NotificationSender")
+
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   scheduledPosts ScheduledPost[]
@@ -508,6 +511,31 @@ model CustomerFieldLabel {
   id           Int    @id @default(autoincrement())
   fieldKey     String @unique // customerName, contactNumber
   displayLabel String // Student Name, Mobile Number
+}
+
+model Notification {
+  id         String  @id @default(uuid())
+  type       String // CUSTOMER_CREATED, FOLLOWUP_ADDED, etc.
+  title      String
+  message    String  @db.LongText
+  entityId   String? // customerId / contactId etc
+  entityType String? // "Customer", "Contact"
+
+  receiverId String // Admin who will receive
+  senderId   String? // Who triggered
+
+  isRead Boolean @default(false)
+
+  metadata Json? @default("{}") // extra data
+
+  createdAt DateTime @default(now())
+
+  receiver Admin  @relation("NotificationReceiver", fields: [receiverId], references: [id])
+  sender   Admin? @relation("NotificationSender", fields: [senderId], references: [id])
+
+  @@index([receiverId])
+  @@index([entityId])
+  @@index([type])
 }
 
 model AIAgent {

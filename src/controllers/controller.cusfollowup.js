@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 
 import ApiError from "../utils/ApiError.js";
 import { followupAgent } from "../ai/agent.js";
+import { notifyCustomerFollowupTaken } from "../jobs/notification/notificationEvents.js";
 
 const prisma = new PrismaClient();
 
@@ -168,6 +169,11 @@ export const createFollowup = async (req, res, next) => {
         CreatedById: admin.id || admin._id,
       },
       include: { customer: { include: { AssignTo: true } } },
+    });
+
+        await notifyCustomerFollowupTaken({
+      customer: followup.customer,
+      admin,
     });
 
     res.status(201).json({

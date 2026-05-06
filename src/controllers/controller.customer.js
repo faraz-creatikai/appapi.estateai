@@ -9,6 +9,7 @@ import utc from "dayjs/plugin/utc.js";
 import timezone from "dayjs/plugin/timezone.js";
 import { CallingAgent, DataMiningAgent, QualifyAgent } from "../ai/agent.js";
 import { callingAgentPrompt } from "../ai/prompts/callingAgentPrompt.js";
+import { notifyCustomerCreated } from "../jobs/notification/notificationEvents.js";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -1100,6 +1101,12 @@ export const createCustomer = async (req, res, next) => {
           })
         });
         console.log(" automation res is ", automationRes) */
+
+            // 🔥 UNIVERSAL EVENT TRIGGER
+/*     await notifyCustomerCreated({
+      customer: newCustomer,
+      admin,
+    }); */
 
     res
       .status(201)

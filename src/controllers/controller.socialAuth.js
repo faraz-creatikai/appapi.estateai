@@ -381,7 +381,7 @@ export const getInstagramLivePosts = async (req, res) => {
     try {
         const userId = req.admin.id;
 
-         const cacheKey = `ig_live_posts_${userId}`;
+        const cacheKey = `ig_live_posts_${userId}`;
 
         // CHECK CACHE (5 min)
         const cached = postCache.get(cacheKey);
@@ -537,8 +537,8 @@ export const publishPost = async (req, res) => {
         const { imageUrl, caption } = req.body;
 
         const userId = req.admin.id; // same auth system you used
-        
-const cacheKey = `ig_publish_${userId}`;
+
+        const cacheKey = `ig_publish_${userId}`;
         const cached = postCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             return res.json({ success: true, posts: cached.data, cached: true });
@@ -1123,7 +1123,114 @@ const connectInstagram = (userId) => {
 };
 
 
+
+
+//run auto social agent with ai generated image and caption without manual file upload
 export const runAutoSocialAgent = async (req, res) => {
+    try {
+        const { content, platform, scheduledTime } = req.body; // e.g., { "userGoal": "Post about coffee", "platform": "INSTAGRAM" }
+        const adminId = req.admin.id;
+
+        // 1. Ask Gemini to "Reason" and create the post details
+        const aipayload = {
+            userGoal: content,
+            platform,
+            scheduledTime
+        };
+        const aiPost = await SocialContentAgent(aipayload);
+
+        // 2. Generate Image & Upload directly to Cloudinary
+        // Using Pollinations.ai as a free "no-key" image generator
+        // Inside runAutoSocialAgent...
+
+        // 1. Generate the Image URL from the AI
+        // Use 'image.pollinations.ai/prompt/' or 'gen.pollinations.ai/image/'
+        console.log("AI Post Data:", aiPost.imagePrompt, " more data ", aiPost); // Check what the AI returned in your console
+
+        let imageUrl = "";
+
+        // 1. If user uploaded image → upload that
+        if (req.files?.PostImage && req.files.PostImage.length > 0) {
+            const uploads = req.files.PostImage.map((file) =>
+                cloudinary.uploader
+                    .upload(file.path, {
+                        folder:
+                            platform === "FACEBOOK"
+                                ? "facebook/facebook_images"
+                                : "instagram/instagram_images",
+                        transformation: [{ width: 1000, crop: "limit" }],
+                    })
+                    .then((upload) => {
+                        fs.unlinkSync(file.path);
+                        return upload.secure_url;
+                    })
+            );
+
+            const PostImages = await Promise.all(uploads);
+            imageUrl = PostImages[0]; // take first image
+        }
+
+        //2. Else → fallback to AI image generation
+        else {
+            console.log("AI Post Data:", aiPost.imagePrompt);
+
+            const generatedImageUrl =
+                "https://image.pollinations.ai/prompt/" +
+                encodeURIComponent(aiPost.imagePrompt) +
+                "?width=1080&height=1080&nologo=true";
+
+            console.log("Generated Image URL:", generatedImageUrl);
+
+            const upload = await cloudinary.uploader.upload(generatedImageUrl, {
+                folder:
+                    platform === "FACEBOOK"
+                        ? "facebook/facebook_images"
+                        : "instagram/instagram_images",
+                transformation: [{ width: 1000, crop: "limit" }],
+                timeout: 120000,
+            });
+
+            imageUrl = upload.secure_url;
+        }
+
+
+
+        // 3. Get Account details (reusing your logic)
+        const account = await prisma.socialAccount.findFirst({
+            where: { userId: adminId, platform: platform.toUpperCase() },
+        });
+
+        if (!account) return res.status(400).send(`${platform} account not connected`);
+
+        // 4. Save to your existing Prisma table
+        const savedPost = await prisma.scheduledPost.create({
+            data: {
+                adminId: adminId,
+                imageUrl: imageUrl,
+                caption: aiPost.caption,
+                igAccountId: platform === "INSTAGRAM" ? account.igAccountId : account.pageId,
+                scheduledTime: new Date(aiPost.scheduledTime),
+                status: "SCHEDULED",
+                platform: platform.toUpperCase()
+            }
+        });
+
+        res.json({
+            success: true,
+            agentSummary: aiPost.contentSummary ? aiPost.contentSummary : "AI Agent successfully generated image and scheduled post.",
+            scheduledTime,
+            post: savedPost
+        });
+
+    } catch (err) {
+        console.error("Agent Error:", err);
+        res.status(500).json({ error: "Agent failed to process request" });
+    }
+};
+
+//old ai image genreration controller without menual file upload
+
+/* export const runAutoSocialAgent = async (req, res) => {
     try {
         const { content, platform, scheduledTime } = req.body; // e.g., { "userGoal": "Post about coffee", "platform": "INSTAGRAM" }
         const adminId = req.admin.id;
@@ -1201,7 +1308,7 @@ export const runAutoSocialAgent = async (req, res) => {
         console.error("Agent Error:", err);
         res.status(500).json({ error: "Agent failed to process request" });
     }
-};
+}; */
 
 
 

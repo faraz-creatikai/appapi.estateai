@@ -658,9 +658,11 @@ export const getAllAdmins = async (req, res) => {
   }
 };
 
+
 //GET ALL CLIENT ADMINS
 export const getClientAdmins = async (req, res) => {
   try {
+
 
     const clientAdmins = await prisma.admin.findMany({
       where: { role: "client_admin" },

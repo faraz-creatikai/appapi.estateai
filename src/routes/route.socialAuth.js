@@ -36,6 +36,8 @@ socialAuthRoutes.post("/schedule-facebook-post", upload.fields([
 ]), scheduleFacebookPost)
 
 
-socialAuthRoutes.post("/auto-social-agent",runAutoSocialAgent);
+socialAuthRoutes.post("/auto-social-agent", upload.fields([
+    { name: "PostImage", maxCount: 5 },
+]), runAutoSocialAgent);
 
 export default socialAuthRoutes;
