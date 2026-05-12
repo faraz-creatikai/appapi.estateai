@@ -398,6 +398,7 @@ model Customer {
   isFavourite     Boolean @default(false)
   isChecked       Boolean @default(false)
   LeadTemperature String? @default("cold")
+  DealClosed      Boolean @default(false)
 
   // -------------------------------
   // RELATIONS with Admin
@@ -442,6 +443,8 @@ model Followup {
   updatedAt DateTime @updatedAt
   contact   Contact? @relation(fields: [contactId], references: [id])
   contactId String?
+
+  isNotified Boolean @default(false)
 }
 
 model Contact {
@@ -505,6 +508,8 @@ model RequestUser {
   city           String?
   experience     String?
   image          Json?   @default("[]")
+
+  createdAt DateTime @default(now())
 }
 
 model CustomerFieldLabel {

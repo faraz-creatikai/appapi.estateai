@@ -45,20 +45,13 @@ import socialContentRoutes from "./routes/route.socialContent.js";
 import propertyRoutes from "./routes/route.property.js";
 import socialAuthRoutes from "./routes/route.socialAuth.js";
 import notificationRoutes from "./routes/route.notification.js";
+import { ALLOWED_ORIGINS } from "./config/cors-origins.js";
 const app = express();
 app.use(cookieParser());
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:5678/",
-      "https://app.estateai.in",
-      "https://estateai.in",
-      "https://www.estateai.in",
-      "https://estateai-lead.vercel.app"
-
-    ],
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   })

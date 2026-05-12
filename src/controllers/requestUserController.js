@@ -117,7 +117,9 @@ export const denyRequest = async (req, res) => {
 
 export const getAllRequestUser = async (req, res) => {
     try {
-        const requestUsers = await prisma.requestUser.findMany();
+        const requestUsers = await prisma.requestUser.findMany({
+             orderBy: { createdAt: "desc" },
+        });
 
         res.status(200).json({
             success: true,

@@ -1,7 +1,11 @@
 import prisma from "../config/prismaClient.js";
+import { getIO } from "../socket/socket.js";
 
 
-export const sendNotification = async ({
+
+
+//old without socket
+/* export const sendNotification = async ({
   type,
   title,
   message,
@@ -35,10 +39,37 @@ export const sendNotification = async ({
   } catch (error) {
     console.error("Notification Error:", error);
   }
+}; */
+
+
+//new with socket
+
+
+// notificationController.js
+export const sendNotification = async ({
+  type, title, message, entityId, entityType,
+  receiverIds = [], senderId, metadata = {},
+}) => {
+  try {
+    if (!receiverIds.length) return;
+
+    const created = await Promise.all(
+      receiverIds.map((receiverId) =>
+        prisma.notification.create({
+          data: { type, title, message, entityId, entityType, receiverId, senderId, metadata },
+        })
+      )
+    );
+
+    const io = getIO();
+    created.forEach((notif) => {
+      io.to(`admin:${notif.receiverId}`).emit("notification", notif);
+    });
+
+  } catch (error) {
+    console.error("Notification Error:", error);
+  }
 };
-
-
-
 
 export const getMyNotifications = async (req, res, next) => {
   try {

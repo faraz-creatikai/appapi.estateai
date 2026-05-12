@@ -30,6 +30,8 @@ const getDownlineAdmins = async (adminId) => {
   return admins.map(a => a.id);
 };
 
+const self = async (adminId) => [adminId];
+
 export const getNotificationReceivers = async (admin) => {
   // CASE 1: USER → notify its creators (city_admin + client_admin)
   if (admin.role === "user") {
@@ -58,4 +60,11 @@ export const getNotificationReceivers = async (admin) => {
   }
 
   return [];
+};
+
+
+
+export const getNotificationReceiversIncludingSelf = async (admin) => {
+  const receivers = await getNotificationReceivers(admin);
+  return [...receivers, admin.id];
 };
