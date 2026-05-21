@@ -519,24 +519,23 @@ model CustomerFieldLabel {
 }
 
 model Notification {
-  id         String  @id @default(uuid())
-  type       String // CUSTOMER_CREATED, FOLLOWUP_ADDED, etc.
+  id         String   @id @default(uuid())
+  type       String
   title      String
-  message    String  @db.LongText
-  entityId   String? // customerId / contactId etc
-  entityType String? // "Customer", "Contact"
+  message    String   @db.LongText
+  entityId   String?
+  entityType String?
 
-  receiverId String // Admin who will receive
-  senderId   String? // Who triggered
+  receiverId String?
+  senderId   String?
 
-  isRead Boolean @default(false)
+  isRead     Boolean  @default(false)
+  metadata   Json?    @default("{}")
+  createdAt  DateTime @default(now())
 
-  metadata Json? @default("{}") // extra data
+  receiver Admin? @relation("NotificationReceiver", fields: [receiverId], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
-
-  receiver Admin  @relation("NotificationReceiver", fields: [receiverId], references: [id])
-  sender   Admin? @relation("NotificationSender", fields: [senderId], references: [id])
+  sender Admin? @relation("NotificationSender", fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([receiverId])
   @@index([entityId])
