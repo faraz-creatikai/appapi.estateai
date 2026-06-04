@@ -1141,13 +1141,13 @@ const connectInstagram = (userId) => {
 // ─────────────────────────────────────────────────────────────
 const generateWithHuggingFace = async (prompt) => {
     const res = await fetch(
-        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell", // ← correct
         {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
                 "Content-Type": "application/json",
-                "x-wait-for-model": "true", // wait if model is loading
+                "x-wait-for-model": "true",
             },
             body: JSON.stringify({
                 inputs: prompt,
@@ -1155,14 +1155,14 @@ const generateWithHuggingFace = async (prompt) => {
             }),
         }
     );
- 
+
     if (!res.ok) {
         const text = await res.text();
         throw new Error(`HuggingFace ${res.status}: ${text.slice(0, 120)}`);
     }
- 
+
     const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer); // binary → Buffer for Cloudinary upload_stream
+    return Buffer.from(arrayBuffer);
 };
 
 //run auto social agent with ai generated image and caption without manual file upload
