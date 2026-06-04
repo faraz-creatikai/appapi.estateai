@@ -1,6 +1,7 @@
 import { gemini } from "../config/gemini.js";
 import { openai } from "../config/openai.js";
-import { callingAgentSystemPrompt } from "./prompts/callingAgentPrompt.js";
+import { fetchTabblyAgentPrompt } from "../controllers/controller.tabbly.js";
+import { buildCallingAgentSystemPrompt, callingAgentSystemPrompt } from "./prompts/callingAgentPrompt.js";
 import { dataminingPrompt, miningDataPrompt } from "./prompts/dataminingAgentPrompt.js";
 import { followupPrompt } from "./prompts/followupPrompt.js";
 import { keywordSearchPrompt } from "./prompts/keywordSearchPrompt.js";
@@ -136,6 +137,10 @@ ${JSON.stringify(userPrompt, null, 2)}`
 }
 
 export async function CallingAgent(userPrompt) {
+   const basePrompt =await fetchTabblyAgentPrompt();
+
+   const systemPrompt = buildCallingAgentSystemPrompt(basePrompt);
+
   const response = await gemini.models.generateContent({
     model: "models/gemini-2.5-flash-lite",
     contents: [
@@ -143,7 +148,7 @@ export async function CallingAgent(userPrompt) {
         role: "user",
         parts: [
           {
-            text: `${callingAgentSystemPrompt}
+            text: `${systemPrompt}
 DATA:
 ${JSON.stringify(userPrompt, null, 2)}`
           }

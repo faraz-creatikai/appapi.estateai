@@ -241,6 +241,97 @@ function deduplicateByContact(customers) {
 // ======================================================
 
 
+// 1. Create a simple global cache store right at the top of your file
+const customerCache = new Map();
+const CACHE_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+export const getAllCustomers = async (req, res, next) => {
+  try {
+    const admin = req.admin;
+    const adminId = admin.id || admin._id;
+
+    // ---------------------------------------------------------
+    // 2. CHECK LOCAL CACHE
+    // ---------------------------------------------------------
+    const cacheKey = `customers:${adminId}:${admin.role}`;
+    const cachedItem = customerCache.get(cacheKey);
+
+    // If cache exists and hasn't expired (under 5 minutes old), return it instantly!
+    if (cachedItem && (Date.now() - cachedItem.timestamp < CACHE_TIMEOUT)) {
+      return res.status(200).json(cachedItem.data);
+    }
+
+    // ---------------------------------------------------------
+    // 3. ISOLATED ROLE-BASED LOGIC
+    // ---------------------------------------------------------
+    let AND = [];
+
+    if (admin.role !== "administrator" && admin.clientId) {
+      AND.push({
+        OR: [
+          { ClientId: admin.clientId },
+          { CreatedById: adminId }
+        ]
+      });
+    }
+
+    if (admin.role === "user") {
+      AND.push({
+        OR: [
+          { AssignTo: { some: { id: adminId } } },
+          { CreatedById: adminId }
+        ]
+      });
+    } else if (admin.role === "city_admin") {
+      const assignedCampaignsData = await prisma.customer.findMany({
+        where: { AssignTo: { some: { id: adminId } } },
+        select: { Campaign: true },
+        distinct: ["Campaign"]
+      });
+
+      const assignedCampaigns = assignedCampaignsData
+        .map(c => c.Campaign)
+        .filter(Boolean);
+
+      AND.push({ City: { equals: admin.city } });
+
+      AND.push({
+        OR: [
+          { CreatedById: adminId },
+          { AssignTo: { some: { id: adminId } } },
+          ...(assignedCampaigns.length > 0 ? [{ Campaign: { in: assignedCampaigns } }] : []),
+        ]
+      });
+    }
+
+    const where = AND.length ? { AND } : {};
+
+    // ---------------------------------------------------------
+    // 4. FAST DATABASE FETCH & TRANSFORM
+    // ---------------------------------------------------------
+    const customers = await prisma.customer.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      include: { AssignTo: true },
+    });
+
+    const transformed = await Promise.all(customers.map(transformGetCustomer));
+
+    // ---------------------------------------------------------
+    // 5. SAVE TO CACHE FOR NEXT TIME
+    // ---------------------------------------------------------
+    customerCache.set(cacheKey, {
+      data: transformed,
+      timestamp: Date.now()
+    });
+
+    return res.status(200).json(transformed);
+
+  } catch (error) {
+    next(new ApiError(500, error.message));
+  }
+};
+
 // ------------------------------------------------------
 //               GET TODAY CUSTOMERS
 // ------------------------------------------------------

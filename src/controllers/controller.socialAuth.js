@@ -385,13 +385,13 @@ export const getInstagramLivePosts = async (req, res) => {
 
         // CHECK CACHE (5 min)
         const cached = postCache.get(cacheKey);
-        if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+       /*  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             return res.json({
                 success: true,
                 posts: cached.data,
                 cached: true
             });
-        }
+        } */
 
         // 1. Get connected account
         const account = await prisma.socialAccount.findFirst({
@@ -852,14 +852,14 @@ export const getFacebookLivePosts = async (req, res) => {
         const cacheKey = `fb_live_posts_${adminId}`;
 
         //CHECK CACHE (5 min)
-        const cached = postCache.get(cacheKey);
+        /* const cached = postCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             return res.json({
                 success: true,
                 posts: cached.data,
                 cached: true
             });
-        }
+        } */
 
         // 1. Get connected Facebook account
         const account = await prisma.socialAccount.findFirst({
