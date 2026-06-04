@@ -4,5 +4,6 @@ export const ALLOWED_ORIGINS = [
   "http://localhost:5678/",
   "https://app.estateai.in",
   "https://estateai.in",
-  "https://estateai-lead.vercel.app"
+  "https://estateai-lead.vercel.app",
+  "https://creatikai-com-ai-design.vercel.app/"
 ];
