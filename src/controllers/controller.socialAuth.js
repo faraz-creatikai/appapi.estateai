@@ -1134,101 +1134,100 @@ const connectInstagram = (userId) => {
 
 
 
+
 //run auto social agent with ai generated image and caption without manual file upload
+// Provider 1 — HuggingFace Inference API  (FREE, no usage cap)
+// Model: FLUX.1-schnell — fast, high quality, genuinely free
+// Requires HUGGINGFACE_API_KEY in .env  (free account is enough)
+// ─────────────────────────────────────────────────────────────
+const generateWithHuggingFace = async (prompt) => {
+    const res = await fetch(
+        "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+        {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+                "Content-Type": "application/json",
+                "x-wait-for-model": "true", // wait if model is loading
+            },
+            body: JSON.stringify({
+                inputs: prompt,
+                parameters: { width: 1024, height: 1024 },
+            }),
+        }
+    );
+ 
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HuggingFace ${res.status}: ${text.slice(0, 120)}`);
+    }
+ 
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer); // binary → Buffer for Cloudinary upload_stream
+};
+
 export const runAutoSocialAgent = async (req, res) => {
     try {
-        const { content, platform, scheduledTime } = req.body; // e.g., { "userGoal": "Post about coffee", "platform": "INSTAGRAM" }
+        const { content, platform, scheduledTime } = req.body;
         const adminId = req.admin.id;
 
-        // 1. Ask Gemini to "Reason" and create the post details
-        const aipayload = {
-            userGoal: content,
-            platform,
-            scheduledTime
-        };
-        const aiPost = await SocialContentAgent(aipayload);
-
-        // 2. Generate Image & Upload directly to Cloudinary
-        // Using Pollinations.ai as a free "no-key" image generator
-        // Inside runAutoSocialAgent...
-
-        // 1. Generate the Image URL from the AI
-        // Use 'image.pollinations.ai/prompt/' or 'gen.pollinations.ai/image/'
-        console.log("AI Post Data:", aiPost.imagePrompt, " more data ", aiPost); // Check what the AI returned in your console
+        // 1. AI generates post content + image prompt
+        const aiPost = await SocialContentAgent({ userGoal: content, platform, scheduledTime });
+        console.log("[Agent] AI post data:", aiPost);
 
         let imageUrl = "";
 
-        // 1. If user uploaded image → upload that
-        if (req.files?.PostImage && req.files.PostImage.length > 0) {
+        // 2a. User uploaded an image → use that
+        if (req.files?.PostImage?.length > 0) {
+            const folder =
+                platform === "FACEBOOK"
+                    ? "facebook/facebook_images"
+                    : "instagram/instagram_images";
+
             const uploads = req.files.PostImage.map((file) =>
                 cloudinary.uploader
                     .upload(file.path, {
-                        folder:
-                            platform === "FACEBOOK"
-                                ? "facebook/facebook_images"
-                                : "instagram/instagram_images",
+                        folder,
                         transformation: [{ width: 1000, crop: "limit" }],
                     })
-                    .then((upload) => {
+                    .then((result) => {
                         fs.unlinkSync(file.path);
-                        return upload.secure_url;
+                        return result.secure_url;
                     })
             );
-
             const PostImages = await Promise.all(uploads);
-            imageUrl = PostImages[0]; // take first image
+            imageUrl = PostImages[0];
+
+        // 2b. No upload → AI-generate with fallback chain
+        } else {
+            imageUrl = await generateAIImage(aiPost.imagePrompt, platform);
         }
 
-        //2. Else → fallback to AI image generation
-        else {
-            console.log("AI Post Data:", aiPost.imagePrompt);
-
-            const generatedImageUrl =
-                "https://image.pollinations.ai/prompt/" +
-                encodeURIComponent(aiPost.imagePrompt) +
-                "?width=1080&height=1080&nologo=true";
-
-            console.log("Generated Image URL:", generatedImageUrl);
-
-            const upload = await cloudinary.uploader.upload(generatedImageUrl, {
-                folder:
-                    platform === "FACEBOOK"
-                        ? "facebook/facebook_images"
-                        : "instagram/instagram_images",
-                transformation: [{ width: 1000, crop: "limit" }],
-                timeout: 120000,
-            });
-
-            imageUrl = upload.secure_url;
-        }
-
-
-
-        // 3. Get Account details (reusing your logic)
+        // 3. Verify social account is connected
         const account = await prisma.socialAccount.findFirst({
             where: { userId: adminId, platform: platform.toUpperCase() },
         });
-
         if (!account) return res.status(400).send(`${platform} account not connected`);
 
-        // 4. Save to your existing Prisma table
+        // 4. Save scheduled post
         const savedPost = await prisma.scheduledPost.create({
             data: {
-                adminId: adminId,
-                imageUrl: imageUrl,
+                adminId,
+                imageUrl,
                 caption: aiPost.caption,
-                igAccountId: platform === "INSTAGRAM" ? account.igAccountId : account.pageId,
+                igAccountId:
+                    platform === "INSTAGRAM" ? account.igAccountId : account.pageId,
                 scheduledTime: new Date(aiPost.scheduledTime),
                 status: "SCHEDULED",
-                platform: platform.toUpperCase()
-            }
+                platform: platform.toUpperCase(),
+            },
         });
 
         res.json({
             success: true,
-            agentSummary: aiPost.contentSummary ? aiPost.contentSummary : "AI Agent successfully generated image and scheduled post.",
+            agentSummary: aiPost.contentSummary ?? "AI Agent successfully generated image and scheduled post.",
             scheduledTime,
-            post: savedPost
+            post: savedPost,
         });
 
     } catch (err) {
