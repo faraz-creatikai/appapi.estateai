@@ -1134,8 +1134,7 @@ const connectInstagram = (userId) => {
 
 
 
-
-//run auto social agent with ai generated image and caption without manual file upload
+// ─────────────────────────────────────────────────────────────
 // Provider 1 — HuggingFace Inference API  (FREE, no usage cap)
 // Model: FLUX.1-schnell — fast, high quality, genuinely free
 // Requires HUGGINGFACE_API_KEY in .env  (free account is enough)
@@ -1166,68 +1165,98 @@ const generateWithHuggingFace = async (prompt) => {
     return Buffer.from(arrayBuffer); // binary → Buffer for Cloudinary upload_stream
 };
 
+//run auto social agent with ai generated image and caption without manual file upload
 export const runAutoSocialAgent = async (req, res) => {
     try {
-        const { content, platform, scheduledTime } = req.body;
+        const { content, platform, scheduledTime } = req.body; // e.g., { "userGoal": "Post about coffee", "platform": "INSTAGRAM" }
         const adminId = req.admin.id;
 
-        // 1. AI generates post content + image prompt
-        const aiPost = await SocialContentAgent({ userGoal: content, platform, scheduledTime });
-        console.log("[Agent] AI post data:", aiPost);
+        // 1. Ask Gemini to "Reason" and create the post details
+        const aipayload = {
+            userGoal: content,
+            platform,
+            scheduledTime
+        };
+        const aiPost = await SocialContentAgent(aipayload);
+
+        // 2. Generate Image & Upload directly to Cloudinary
+        // Using Pollinations.ai as a free "no-key" image generator
+        // Inside runAutoSocialAgent...
+
+        // 1. Generate the Image URL from the AI
+        // Use 'image.pollinations.ai/prompt/' or 'gen.pollinations.ai/image/'
+        console.log("AI Post Data:", aiPost.imagePrompt, " more data ", aiPost); // Check what the AI returned in your console
 
         let imageUrl = "";
 
-        // 2a. User uploaded an image → use that
-        if (req.files?.PostImage?.length > 0) {
-            const folder =
-                platform === "FACEBOOK"
-                    ? "facebook/facebook_images"
-                    : "instagram/instagram_images";
-
+        // 1. If user uploaded image → upload that
+        if (req.files?.PostImage && req.files.PostImage.length > 0) {
             const uploads = req.files.PostImage.map((file) =>
                 cloudinary.uploader
                     .upload(file.path, {
-                        folder,
+                        folder:
+                            platform === "FACEBOOK"
+                                ? "facebook/facebook_images"
+                                : "instagram/instagram_images",
                         transformation: [{ width: 1000, crop: "limit" }],
                     })
-                    .then((result) => {
+                    .then((upload) => {
                         fs.unlinkSync(file.path);
-                        return result.secure_url;
+                        return upload.secure_url;
                     })
             );
-            const PostImages = await Promise.all(uploads);
-            imageUrl = PostImages[0];
 
-        // 2b. No upload → AI-generate with fallback chain
-        } else {
-            imageUrl = await generateAIImage(aiPost.imagePrompt, platform);
+            const PostImages = await Promise.all(uploads);
+            imageUrl = PostImages[0]; // take first image
         }
 
-        // 3. Verify social account is connected
+        //2. Else → fallback to AI image generation
+else {
+    const imageBuffer = await generateWithHuggingFace(aiPost.imagePrompt);
+
+    const folder = platform === "FACEBOOK"
+        ? "facebook/facebook_images"
+        : "instagram/instagram_images";
+
+    // upload_stream because we have a Buffer, not a file path or URL
+    imageUrl = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+            { folder, transformation: [{ width: 1000, crop: "limit" }] },
+            (error, result) => {
+                if (error) return reject(error);
+                resolve(result.secure_url);
+            }
+        ).end(imageBuffer); // .end() pushes the Buffer into the stream
+    });
+}
+
+
+
+        // 3. Get Account details (reusing your logic)
         const account = await prisma.socialAccount.findFirst({
             where: { userId: adminId, platform: platform.toUpperCase() },
         });
+
         if (!account) return res.status(400).send(`${platform} account not connected`);
 
-        // 4. Save scheduled post
+        // 4. Save to your existing Prisma table
         const savedPost = await prisma.scheduledPost.create({
             data: {
-                adminId,
-                imageUrl,
+                adminId: adminId,
+                imageUrl: imageUrl,
                 caption: aiPost.caption,
-                igAccountId:
-                    platform === "INSTAGRAM" ? account.igAccountId : account.pageId,
+                igAccountId: platform === "INSTAGRAM" ? account.igAccountId : account.pageId,
                 scheduledTime: new Date(aiPost.scheduledTime),
                 status: "SCHEDULED",
-                platform: platform.toUpperCase(),
-            },
+                platform: platform.toUpperCase()
+            }
         });
 
         res.json({
             success: true,
-            agentSummary: aiPost.contentSummary ?? "AI Agent successfully generated image and scheduled post.",
+            agentSummary: aiPost.contentSummary ? aiPost.contentSummary : "AI Agent successfully generated image and scheduled post.",
             scheduledTime,
-            post: savedPost,
+            post: savedPost
         });
 
     } catch (err) {
