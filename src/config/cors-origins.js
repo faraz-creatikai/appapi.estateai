@@ -5,5 +5,5 @@ export const ALLOWED_ORIGINS = [
   "https://app.estateai.in",
   "https://estateai.in",
   "https://estateai-lead.vercel.app",
-  "https://creatikai-com-ai-design.vercel.app/"
+  "https://creatikai-com-ai-design.vercel.app"
 ];
