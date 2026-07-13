@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { sendEmail } from "../config/mailer.js";
-import { sendWhatsApp } from "../config/twilio.js";
+import { sendBaileysWhatsApp, sendWhatsApp } from "../config/twilio.js";
 import ApiError from "../utils/ApiError.js";
 import { makeCall } from "../config/exotel.js";
 
@@ -165,6 +165,102 @@ export const sendWhatsAppByTemplate = async (req, res, next) => {
           status: "sent",
           sid: result.sid,
         });
+      } catch (err) {
+        results.push({
+          id: c.id,
+          name: c.customerName,
+          status: "failed",
+          error: err.message,
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      sent: results.filter((r) => r.status === "sent").length,
+      results,
+    });
+  } catch (err) {
+    next(new ApiError(500, err.message));
+  }
+};
+
+
+
+
+// Helper to pause execution
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const sendBaileysWhatsAppByTemplate = async (req, res, next) => {
+  try {
+    const { templateId, customerIds = [], sendToAll = false } = req.body;
+    if (!templateId) return next(new ApiError(400, "templateId is required"));
+
+    const template = await prisma.template.findUnique({
+      where: { id: templateId },
+    });
+    
+    if (!template) return next(new ApiError(404, "Template not found"));
+    if (template.type !== "whatsapp")
+      return next(new ApiError(400, "Template type must be 'whatsapp'"));
+
+    const customers = await fetchTargetCustomers({ customerIds, sendToAll });
+    if (!customers.length) return next(new ApiError(404, "No customers found"));
+
+    const results = [];
+
+    for (let i = 0; i < customers.length; i++) {
+      const c = customers[i];
+      try {
+        const phone = c.ContactNumber || "";
+        if (!phone) {
+          results.push({
+            id: c.id,
+            name: c.customerName,
+            status: "skipped_no_phone",
+          });
+          continue;
+        }
+
+        // Format for Baileys: Must not contain '+'
+        let cleanPhone = phone.replace("+", "");
+        
+        // If it's just a 10 digit number, prepend the country code (without +)
+        const defaultCode = (process.env.DEFAULT_COUNTRY_CODE || "91").replace("+", "");
+        const formattedPhone = cleanPhone.length === 10 
+          ? `${defaultCode}${cleanPhone}` 
+          : cleanPhone;
+
+        const message = replacePlaceholders(template.body, c);
+        const imageUrl = template.whatsappImage?.[0] || null;
+
+
+const extra = {
+  mediaType: template.whatsappMediaType || undefined,
+  fileName: template.whatsappFileName || undefined,
+  linkPreview: template.whatsappLinkPreview || undefined,
+  location: template.whatsappLocation || undefined,
+  poll: template.whatsappPoll || undefined,
+};
+
+const result = await sendBaileysWhatsApp(formattedPhone, message, imageUrl, extra);
+
+ 
+
+        results.push({
+          id: c.id,
+          phone: formattedPhone,
+          status: "sent",
+          sid: result?.key?.id, // Baileys message ID
+        });
+
+        // ⚠️ CRITICAL BAN PROTECTION
+        // Pause for 3 to 7 seconds between sending messages to mimic human behavior
+        if (i < customers.length - 1) {
+          const waitTime = Math.floor(Math.random() * 4000) + 3000;
+          await delay(waitTime);
+        }
+
       } catch (err) {
         results.push({
           id: c.id,

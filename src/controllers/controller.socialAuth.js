@@ -367,7 +367,7 @@ export const metaCallback = async (req, res) => {
         // =========================
         // 8. Redirect to frontend
         // =========================
-        res.redirect("https://app.estateai.in/socialmedia-manager");
+        res.redirect("http://localhost:3000/socialmedia-manager");
     } catch (err) {
         console.error("❌ OAuth Error:", err);
         res.status(500).json({
@@ -1130,7 +1130,6 @@ const connectInstagram = (userId) => {
 
     window.location.href = url;
 };
-
 
 
 

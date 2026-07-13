@@ -22,6 +22,18 @@ import {
   closeDeal,
   reopenDeal,
   getAllCustomers,
+  addPropertiesToShortlist,
+  getCustomerShortlist,
+  removePropertiesFromShortlist,
+  updateShortlistStatus,
+  getDashboardStatsCount,
+  getLeadSourcesStats,
+  getLeadTemperatureStats,
+  getVisitorsChartStats,
+  getFollowupChartStats,
+  getCustomerLocationStats,
+  getRadarChartStats,
+  getCustomerCount,
 } from "../controllers/controller.customer.js";
 
 import upload from "../config/multer.js";
@@ -43,13 +55,33 @@ const customerRoutes = express.Router();
 // ✅ Protected Routes
 customerRoutes.use(protectRoute);
 
+
+//dashboard routes
+customerRoutes.get("/dashboard/stats-count",getDashboardStatsCount);
+customerRoutes.get("/dashboard/lead-source-stats",getLeadSourcesStats);
+customerRoutes.get("/dashboard/lead-temperature-stats",getLeadTemperatureStats);
+customerRoutes.get("/dashboard/visiter-chart-stats",getVisitorsChartStats);
+customerRoutes.get("/dashboard/followup-chart-stats",getFollowupChartStats);
+customerRoutes.get("/dashboard/customer-location-stats",getCustomerLocationStats);
+customerRoutes.get("/dashboard/radar-chart-stats",getRadarChartStats);
+
+
+//customer routes
+
 // 🧭 Base CRUD Routes
 customerRoutes.get("/today", getTodayCustomers);
 customerRoutes.get("/getcalllogs",getCallLogs);
 customerRoutes.get("/get-call-report",getCallReport);
 customerRoutes.get("/data-mining", dataMining);
 customerRoutes.get("/", getCustomer);
+customerRoutes.get("/count",getCustomerCount);
 customerRoutes.get("/all",getAllCustomers)
+
+//shortlist recommended customers
+customerRoutes.post('/shortlist', protectRoute, addPropertiesToShortlist);
+customerRoutes.get('/shortlist/:customerId', protectRoute, getCustomerShortlist);
+customerRoutes.delete('/shortlist', protectRoute, removePropertiesFromShortlist);
+customerRoutes.put('/shortlist', protectRoute, updateShortlistStatus);
 
 
 customerRoutes.post("/check-duplicates", checkDuplicateContacts);
@@ -117,5 +149,8 @@ customerRoutes.post("/close-deal/:id",protectRoute,closeDeal);
 customerRoutes.post("/reopen-deal/:id",protectRoute,reopenDeal);
 
 customerRoutes.get("/:id", getCustomerById);
+
+
+
 
 export default customerRoutes;
