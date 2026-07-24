@@ -367,7 +367,7 @@ export const metaCallback = async (req, res) => {
         // =========================
         // 8. Redirect to frontend
         // =========================
-        res.redirect("http://localhost:3000/socialmedia-manager");
+        res.redirect("https://app.estateai.in/socialmedia-manager");
     } catch (err) {
         console.error("❌ OAuth Error:", err);
         res.status(500).json({
