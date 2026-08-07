@@ -7,6 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model BrandSettings {
+  id              Int    @id @default(1)
+  appName         String @default("EstateAI Agent Platform")
+  shortName       String @default("EstateAI")
+  primaryColor    String   @default("#0066cc")
+  themeColor      String @default("#ffffff")
+  backgroundColor String @default("#ffffff")
+
+  // Image URLs (Store the actual images in AWS S3, Cloudinary, or your server's upload folder)
+  faviconUrl      String?
+  logoTextUrl     String? // Logo with domain name text
+  logoIconUrl     String? // Logo without text
+  splashScreenUrl String?
+  icon192Url      String? // For manifest
+  icon512Url      String? // For manifest
+
+  updatedAt DateTime @updatedAt
+}
+
 model Admin {
   id           String      @id @default(uuid())
   name         String
@@ -38,6 +57,7 @@ model Admin {
   createdCustomers  Customer[] @relation("CustomerCreatedBy")
   createdFollowups  Followup[] @relation("FollowupCreatedBy")
   createdPropertys  Property[] @relation("PropertyCreatedBy")
+  archivedCustomers CustomerArchive[] @relation("AdminArchivedCustomers")
 
   assignedContact Contact[] @relation("ContactAssignedTo")
 
@@ -56,6 +76,7 @@ enum Role {
   client_admin
   city_admin
   user
+  agent
 }
 
 enum AdminStatus {
@@ -303,7 +324,6 @@ model Template {
   whatsappPoll        Json?   @default("null") // { name, options: [], selectableCount }
   variables           Json?   @default("[]") // e.g. ["customerName","amount"] — useful for email too, as a "available merge tags" hint in your UI
   category            String? @default("") // free-text grouping, e.g. "marketing" / "reminder" — just metadata
-  
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -417,6 +437,22 @@ model PropertyShortlist {
   @@index([propertyId])
 }
 
+model CustomerArchive {
+  id String @id @default(uuid())
+
+  customerId String
+  customer   Customer @relation("CustomerArchivedByAdmin", fields: [customerId], references: [id], onDelete: Cascade)
+
+  adminId String
+  admin   Admin  @relation("AdminArchivedCustomers", fields: [adminId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([customerId, adminId]) // one archive record per admin per customer
+  @@index([adminId])
+  @@index([customerId])
+}
+
 model Customer {
   id              String  @id @default(uuid())
   Campaign        String? @default("")
@@ -476,6 +512,9 @@ model Customer {
 
   // Customers who have shortlisted this property (If this customer is a Seller)
   shortlistedBy PropertyShortlist[] @relation("PropertyShortlist")
+
+  // Customers who have archieved this customer
+  archivedBy CustomerArchive[] @relation("CustomerArchivedByAdmin")
 
   // INDEXES (put here at bottom)
   @@index([ContactNumber])

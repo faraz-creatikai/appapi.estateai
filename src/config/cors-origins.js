@@ -2,9 +2,10 @@
 export const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:5678/",
+  "https://ibigdata.in",
+  "https://property.ibigdata.in",
   "https://app.estateai.in",
   "https://estateai.in",
-  "https://creatikai.com",
-  "https://estateai-lead.vercel.app",
-  "https://creatikai-com-ai-design.vercel.app/"
 ];
+
+export const clientUrl="https://app.estateai.in";

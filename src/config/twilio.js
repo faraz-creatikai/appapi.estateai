@@ -57,8 +57,6 @@ const getMimeType = (url = "") => {
   return map[ext] || "application/octet-stream";
 };
 
-
-
 export const sendBaileysWhatsApp = async (to, message, imageUrl = null, extra = {}) => {
   try {
     let sock = getWhatsAppSocket();
@@ -81,7 +79,7 @@ export const sendBaileysWhatsApp = async (to, message, imageUrl = null, extra = 
     }
 
     const {
-      mediaType = "text", // 👇 Default is now "text" instead of "none"
+      mediaType = "text",
       fileName = "",
       linkPreview = null,
       location = null,
@@ -94,23 +92,22 @@ export const sendBaileysWhatsApp = async (to, message, imageUrl = null, extra = 
     // 2. Only download media if the template actually requires a file
     let mediaBufferPromise = null;
     const isFileMedia = ["image", "video", "document"].includes(mediaType);
-    
+
     if (imageUrl && isFileMedia) {
       mediaBufferPromise = fetch(imageUrl)
         .then(res => res.arrayBuffer())
         .then(buf => Buffer.from(buf))
         .catch(err => {
           console.warn("⚠️ Failed to pre-fetch media, falling back to URL stream:", err.message);
-          return { url: imageUrl }; 
+          return { url: imageUrl };
         });
     }
 
     // 3. Humanize delay
     if (humanize) {
       await sock.presenceSubscribe(jid).catch(() => { });
-      await delay(200); 
-      
-      // 👇 FIX: Now explicitly shows "typing..." for text/poll/location, and "recording..." for video
+      await delay(200);
+
       const isRecording = mediaType === "video";
       await sock.sendPresenceUpdate(isRecording ? "recording" : "composing", jid);
 
@@ -145,6 +142,38 @@ export const sendBaileysWhatsApp = async (to, message, imageUrl = null, extra = 
 
       if (mediaType === "video") {
         content = { video: mediaSource, caption: message };
+
+        // 🚀 CLOUDINARY ZERO-LOAD THUMBNAIL TRICK (FIXED)
+        if (typeof imageUrl === "string" && imageUrl.includes("res.cloudinary.com")) {
+          try {
+            const cleanUrl = imageUrl.split("?")[0];
+            const lastDotIndex = cleanUrl.lastIndexOf(".");
+
+            if (lastDotIndex !== -1) {
+              let thumbnailUrl = cleanUrl.substring(0, lastDotIndex) + ".jpg";
+
+              // 1. Force strict JPEG format (f_jpg), limit dimensions to 320x320, and compress (q_50)
+              // This guarantees the file size is tiny enough to pass WhatsApp's filter.
+              thumbnailUrl = thumbnailUrl.replace("/upload/", "/upload/w_320,h_320,c_limit,q_50,f_jpg/");
+              console.log(" thumnail url is ", thumbnailUrl)
+
+              const thumbRes = await fetch(thumbnailUrl);
+              if (thumbRes.ok) {
+                const thumbBuffer = Buffer.from(await thumbRes.arrayBuffer());
+
+                // 2. Attach the Buffer directly (Baileys loves Buffers)
+                content.jpegThumbnail = thumbBuffer;
+
+                // 3. 🛑 THE MISSING INGREDIENT: You MUST declare the dimensions for video thumbnails
+                // Without these two lines, WhatsApp silently deletes the thumbnail on the receiving phone.
+                content.width = 320;
+                content.height = 270;
+              }
+            }
+          } catch (err) {
+            console.warn("⚠️ Failed to fetch Cloudinary thumbnail:", err.message);
+          }
+        }
       } else if (mediaType === "document") {
         content = {
           document: mediaSource,
@@ -205,7 +234,122 @@ export const sendBaileysWhatsApp = async (to, message, imageUrl = null, extra = 
   }
 };
 
+export const sendBaileysWhatsAppDirect = async (to, message, fileBuffer = null, extra = {}) => {
+  try {
+    let sock = getWhatsAppSocket();
 
+    // 1. 🛑 FIX: Wait if socket is completely missing OR if it's currently reconnecting
+    if (!sock || getWhatsAppConnectionState().status !== 'connected') {
+      console.log("🚦 WhatsApp engine is reconnecting or asleep. Waiting...");
+      if (!sock) initWhatsApp();
+
+      let retries = 0;
+      while (getWhatsAppConnectionState().status !== 'connected' && retries < 15) {
+        await delay(1000);
+        retries++;
+      }
+
+      sock = getWhatsAppSocket();
+      if (!sock || getWhatsAppConnectionState().status !== 'connected') {
+        throw new Error("WhatsApp socket failed to stabilize/connect.");
+      }
+    }
+
+    const {
+      mediaType = "text",
+      fileName = "file",
+      mimetype = "application/octet-stream",
+      location = null,
+      poll = null,
+      humanize = true,
+    } = extra;
+
+    const jid = `${to}@s.whatsapp.net`;
+
+    // 2. 🛑 FIX: Safely wrap presence updates so they never crash the actual send
+    if (humanize) {
+      await sock.presenceSubscribe(jid).catch(() => { });
+      await delay(200);
+
+      const isRecording = mediaType === "video";
+      // Added .catch() so a failed typing indicator doesn't kill the message
+      await sock.sendPresenceUpdate(isRecording ? "recording" : "composing", jid).catch(() => { });
+
+      const artificialDelay = fileBuffer ? 800 : (1200 + Math.floor(Math.random() * 1000));
+      await delay(artificialDelay);
+
+      await sock.sendPresenceUpdate("paused", jid).catch(() => { });
+    }
+
+    let content;
+
+    // 3. Build Content
+    if (mediaType === "poll" && poll?.name) {
+      content = {
+        poll: {
+          name: poll.name,
+          values: poll.options,
+          selectableCount: poll.selectableCount || 1,
+        },
+      };
+    } else if (mediaType === "location" && location?.lat && location?.lng) {
+      content = {
+        location: {
+          degreesLatitude: Number(location.lat),
+          degreesLongitude: Number(location.lng),
+          name: location.name || "",
+          address: location.address || "",
+        },
+      };
+    } else if (fileBuffer) {
+      if (mediaType === "video") {
+        content = { video: fileBuffer, caption: message };
+      } else if (mediaType === "document") {
+        content = {
+          document: fileBuffer,
+          mimetype: mimetype,
+          fileName: fileName,
+          caption: message,
+        };
+      } else {
+        content = { image: fileBuffer, caption: message };
+      }
+    } else {
+      content = { text: message };
+    }
+
+    // 4. Send with Auto-Retry
+    let result;
+    try {
+      result = await sock.sendMessage(jid, content);
+    } catch (sendError) {
+      // If it STILL throws a connection closed (e.g. timeout during a large file upload), retry once.
+      if (sendError.message.toLowerCase().includes('close') || sendError.message.toLowerCase().includes('timeout')) {
+        console.warn("⚠️ WhatsApp connection dropped during upload. Retrying once...");
+        await delay(2000);
+        sock = getWhatsAppSocket(); // Grab fresh socket reference
+        if (sock && getWhatsAppConnectionState().status === 'connected') {
+          result = await sock.sendMessage(jid, content);
+        } else {
+          throw sendError;
+        }
+      } else {
+        throw sendError;
+      }
+    }
+
+    // Follow up location with caption if needed safely
+    if (mediaType === "location" && message) {
+      await delay(500);
+      await sock.sendMessage(jid, { text: message }).catch(() => { });
+    }
+
+    return result;
+  } catch (error) {
+    console.error("❌ WhatsApp Direct Send error:", error.message);
+    throw error;
+  }
+};
 
 
 //digitalsms api

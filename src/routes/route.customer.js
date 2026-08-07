@@ -34,6 +34,10 @@ import {
   getCustomerLocationStats,
   getRadarChartStats,
   getCustomerCount,
+  getCustomFieldValues,
+  archiveCustomer,
+  unarchiveCustomer,
+  getArchivedCustomers,
 } from "../controllers/controller.customer.js";
 
 import upload from "../config/multer.js";
@@ -73,9 +77,11 @@ customerRoutes.get("/today", getTodayCustomers);
 customerRoutes.get("/getcalllogs",getCallLogs);
 customerRoutes.get("/get-call-report",getCallReport);
 customerRoutes.get("/data-mining", dataMining);
+customerRoutes.get("/get-customer-fields-values",getCustomFieldValues);
 customerRoutes.get("/", getCustomer);
 customerRoutes.get("/count",getCustomerCount);
-customerRoutes.get("/all",getAllCustomers)
+customerRoutes.get("/all",getAllCustomers);
+
 
 //shortlist recommended customers
 customerRoutes.post('/shortlist', protectRoute, addPropertiesToShortlist);
@@ -107,6 +113,7 @@ customerRoutes.put(
     { name: "CustomerImage", maxCount: 5 },
     { name: "SitePlan", maxCount: 5 },
   ]),
+  isCityAdminOrAbove,
   validate(updateCustomerValidator),
   updateCustomer
 );
@@ -148,9 +155,18 @@ customerRoutes.get("/closed-deals", protectRoute, getClosedDeals);
 customerRoutes.post("/close-deal/:id",protectRoute,closeDeal);
 customerRoutes.post("/reopen-deal/:id",protectRoute,reopenDeal);
 
+//archieve routes
+customerRoutes.patch("/archive/:id", protectRoute, archiveCustomer);
+customerRoutes.patch("/unarchive/:id", protectRoute, unarchiveCustomer);
+customerRoutes.get("/archived", protectRoute, getArchivedCustomers);
+
 customerRoutes.get("/:id", getCustomerById);
 
 
 
 
 export default customerRoutes;
+
+
+
+

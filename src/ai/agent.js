@@ -3,29 +3,52 @@ import { getDynamicAIContext } from "../config/aiClientFactory.js";
 import { gemini } from "../config/gemini.js";
 import { openai } from "../config/openai.js";
 import { fetchTabblyAgentPrompt } from "../controllers/controller.tabbly.js";
+import { countSpokenWords } from "../jobs/ttsService.js";
 import { buildCallingAgentSystemPrompt, callingAgentSystemPrompt } from "./prompts/callingAgentPrompt.js";
 import { dataminingPrompt, miningDataPrompt } from "./prompts/dataminingAgentPrompt.js";
+import { emailCampaignPrompt } from "./prompts/emailCampaignPrompt.js";
 import { followupPrompt } from "./prompts/followupPrompt.js";
 import { keywordSearchPrompt } from "./prompts/keywordSearchPrompt.js";
 import { propertyRecommendationPrompt } from "./prompts/propertyRecommendationPrompt.js";
 import { qualifyCustomerPrompt } from "./prompts/qualifyCustomerPrompt.js";
 import { scriptGenerationPrompt } from "./prompts/scriptGenerationPrompt.js";
 import { socialAgentPrompt } from "./prompts/socialAgentPrompt.js";
+import { videoScriptGenerationPrompt } from "./prompts/VideoScriptGenerationPrompt.js";
 
 export function safeJsonParse(raw) {
   if (!raw) return null;
 
-  // Remove ```json ... ``` or ``` ... ``` fences
+  // 1. Remove ```json ... ``` or ``` ... ``` fences
   const cleaned = raw
-    .replace(/```json/g, "")
+    .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
 
+  // 2. Try standard parse first (Fast Path - preserves existing agent behavior)
   try {
     return JSON.parse(cleaned);
-  } catch (err) {
-    console.warn("Failed to parse JSON:", cleaned);
-    return null;
+  } catch (firstErr) {
+    // 3. Fallback Repair Path: Only executes if standard parse failed
+    try {
+      // Fix A: Remove rogue backslashes before non-JSON escape characters (e.g. \枉 -> 枉, \m -> m)
+      // Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+      let sanitized = cleaned.replace(/\\(?:[^"\\\/bfnrtu]|u(?![0-9a-fA-F]{4}))/g, (match) => {
+        return match.slice(1); // Strip only the invalid backslash
+      });
+
+      // Fix B: Escape literal unescaped control characters / raw line breaks inside string values
+      sanitized = sanitized.replace(/[\u0000-\u001F\u007F-\u009F]/g, (match) => {
+        if (match === '\n') return '\\n';
+        if (match === '\r') return '\\r';
+        if (match === '\t') return '\\t';
+        return '';
+      });
+
+      return JSON.parse(sanitized);
+    } catch (secondErr) {
+      console.warn("Failed to parse JSON:", cleaned);
+      return null;
+    }
   }
 }
 
@@ -38,16 +61,34 @@ async function executeDynamicPrompt(client, model, provider, promptText) {
     const response = await client.chat.completions.create({
       model: model,
       messages: [{ role: "user", content: promptText }],
+      response_format: { type: "json_object" }, // Good practice if your prompt asks for JSON
+      temperature: 0.2
     });
     return response.choices?.[0]?.message?.content;
+    
   } else if (provider === "GEMINI") {
     const response = await client.models.generateContent({
       model: model,
       contents: [{ role: "user", parts: [{ text: promptText }] }],
+      config: {
+        responseMimeType: "application/json", // Hard-enforces valid JSON syntax
+        temperature: 0.2
+      }
     });
     return response?.text;
+    
+  } else if (provider === "GROQ") {
+    // Groq uses the exact same API structure as OpenAI!
+    const response = await client.chat.completions.create({
+      model: model,
+      messages: [{ role: "user", content: promptText }],
+      response_format: { type: "json_object" }, // Enforces JSON output from Llama models
+      temperature: 0.2
+    });
+    return response.choices?.[0]?.message?.content;
+    
   } else {
-    // Ready for you to add ANTHROPIC, GROQ, etc. later!
+    // Ready for you to add ANTHROPIC, etc. later!
     throw new Error(`Unsupported AI Provider: ${provider}`);
   }
 }
@@ -270,6 +311,29 @@ export async function SocialContentAgent(payload) {
 }
 
 
+// Drop-in replacement for EmailCampaignAgent.
+// Only change: a 4th optional `templateHtml` param, forwarded into the
+// payload the prompt sees as DATA.templateHtml. See emailCampaignPrompt.js
+// for the matching instruction that tells the model how to use it.
+
+export async function EmailCampaignAgent(userPrompt, customerContext = {}, mode = "hindi", usingTemplate = false) {
+  const payload = {
+    userPrompt,
+    mode,
+    ...(customerContext.customer && { customer: customerContext.customer }),
+    usingTemplate: !!usingTemplate, // just a flag — no HTML sent
+  };
+
+  const { client, model, provider } = await getDynamicAIContext("GEMINI", "models/gemini-2.5-flash");
+  const promptText = `${emailCampaignPrompt}\nDATA:\n${JSON.stringify(payload, null, 2)}`;
+  const raw = await executeDynamicPrompt(client, model, provider, promptText);
+
+  if (!raw || !raw.trim()) throw new Error("AI returned empty response");
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("Invalid AI response format");
+  return safeJsonParse(jsonMatch[0]);
+}
+
 
 // webhook integrated agent 
 
@@ -418,4 +482,157 @@ ${JSON.stringify(userPrompt, null, 2)}
   }
 
   return finalResult;
+}
+
+
+export async function productPriceCompareAgent(productName, products) {
+  if (!products || products.length === 0) return "";
+  const cheapest = products[0];
+  const fallback = `The lowest price found for ${productName} is ${cheapest.price} on ${cheapest.platform}.`;
+
+  try {
+    // Dynamically pull your Master Key from Prisma just like your Sales Script agent
+    const { client, model, provider } = await getDynamicAIContext("GEMINI", "models/gemini-2.5-flash-lite");
+
+    const resultsText = products.map(p => `${p.platform}: ${p.price}`).join("\n");
+    const promptText = `Product: ${productName}\nPrices:\n${resultsText}\nWrite exactly two short sentences. Mention the cheapest platform and price, and the total number of platforms found. Do not use markdown.`;
+
+    const raw = await executeDynamicPrompt(client, model, provider, promptText);
+    console.log(" output raw", raw)
+    return raw ? raw.trim() : fallback;
+
+  } catch (error) {
+    console.error("AI Summary error:", error.message);
+    return fallback; // Safe failover if the database AI key logic fails
+  }
+}
+
+
+// agents/videoScriptGenerationAgent.js
+
+
+
+const MIN_WORDS = 12;
+const MAX_WORDS = 18;
+const MAX_ATTEMPTS = 4;
+
+function cleanLine(line) {
+  let sentence = String(line).replace(/[,;:।.!?\n]+/g, " ");
+  sentence = sentence.replace(/\s+/g, " ").trim();
+  sentence = sentence.replace(/^[-\u2014\s]+|[-\u2014\s]+$/g, "");
+  return sentence;
+}
+
+/**
+ * Generates one voiceover line per photo.
+ *
+ * @param {string[]} photoLabels - ordered area labels, one per photo (e.g. ["front area", "hall", "kitchen"])
+ * @param {string} propertyDetails - free text property description
+ * @param {string} [mode] - language/tone, e.g. "hinglish" | "hindi" | "english"
+ */
+export async function VideoScriptGenerationAgent(photoLabels, propertyDetails, mode = "hinglish") {
+  if (!Array.isArray(photoLabels) || photoLabels.length === 0) {
+    throw new Error("At least one photo label is required");
+  }
+  if (!propertyDetails || !propertyDetails.trim()) {
+    throw new Error("Property details are required");
+  }
+
+  const photoOrder = photoLabels.map((label, i) => `Photo ${i + 1}: ${label}`).join("\n");
+
+  const payload = {
+    propertyDetails: propertyDetails.trim(),
+    totalPhotos: photoLabels.length,
+    photoOrder,
+    mode,
+  };
+
+  const { client, model, provider } = await getDynamicAIContext("GROQ", "llama-3.3-70b-versatile");
+
+  let lastError = "Voiceover generation failed.";
+  const MAX_ATTEMPTS = 4; // Ensure you have this defined
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    try {
+      // Feed the specific error back to the AI so it knows exactly what to fix
+      const retryNote =
+        attempt > 0
+          ? `\nPREVIOUS ERROR: ${lastError}\nPlease fix this. Ensure word counts are strictly 14-16 words per line, keep exact photo order, and strictly follow the alphabet rules for the requested mode.`
+          : "";
+
+      const promptText = `${videoScriptGenerationPrompt}\nDATA:\n${JSON.stringify(payload, null, 2)}${retryNote}`;
+     
+      const raw = await executeDynamicPrompt(client, model, provider, promptText);
+
+      if (!raw || !raw.trim()) {
+        throw new Error("AI returned empty response");
+      }
+
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("Invalid AI response format");
+      }
+
+      const data = safeJsonParse(jsonMatch[0]);
+      const lines = data?.voiceovers;
+
+      if (!Array.isArray(lines) || lines.length !== photoLabels.length) {
+        throw new Error(`Expected ${photoLabels.length} lines but received ${lines?.length ?? 0}`);
+      }
+
+      const cleaned = [];
+      const invalidLengths = [];
+      let languageError = null;
+
+      // Regex to detect Hindi Devanagari characters
+      const hasDevanagari = (text) => /[\u0900-\u097F]/.test(text);
+      const normalizedMode = mode.toLowerCase();
+
+      lines.forEach((line, idx) => {
+        const sentence = cleanLine(line); // Assuming cleanLine is defined in your file
+        if (!sentence) {
+          throw new Error(`Photo ${idx + 1} voiceover is empty`);
+        }
+
+        // 1. Language Validation Check
+        if (normalizedMode === "hinglish" || normalizedMode === "english") {
+          if (hasDevanagari(sentence)) {
+            languageError = `Mode is ${mode}, but Devanagari script was detected in line ${idx + 1}. You MUST use ONLY the Latin alphabet (A-Z).`;
+          }
+        } else if (normalizedMode === "hindi") {
+          if (!hasDevanagari(sentence)) {
+            languageError = `Mode is hindi, but no Devanagari script was found in line ${idx + 1}. You MUST use Devanagari alphabet.`;
+          }
+        }
+
+        // 2. Length Validation Check
+        const wordCount = countSpokenWords(sentence);
+        if (wordCount < MIN_WORDS || wordCount > MAX_WORDS) {
+          invalidLengths.push({ photo: idx + 1, words: wordCount });
+        }
+
+        cleaned.push(sentence);
+      });
+
+      // Throw language errors immediately to trigger a retry with the specific instruction
+      if (languageError && attempt < MAX_ATTEMPTS - 1) {
+        throw new Error(languageError);
+      }
+
+      // Small tolerance keeps generation reliable - final audio duration is
+      // still fitted exactly to each photo slot later via ffmpeg atempo.
+      if (invalidLengths.length && attempt < MAX_ATTEMPTS - 1) {
+        throw new Error(`Voiceover word counts out of range: ${JSON.stringify(invalidLengths)}`);
+      }
+
+      return {
+        voiceovers: cleaned,
+        metadata: { attempts: attempt + 1, mode },
+      };
+    } catch (error) {
+      lastError = error.message;
+    }
+  }
+
+  throw new Error(lastError);
 }

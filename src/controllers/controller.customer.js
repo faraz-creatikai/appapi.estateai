@@ -54,7 +54,9 @@ const getPublicIdFromUrl = (url) => {
 // ------------------------------------------------------
 //      Attach AssignTo information (only basic)
 // ------------------------------------------------------
-const transformGetCustomer = async (c) => {
+const transformGetCustomer = async (c, admin = null) => {
+  const adminId = admin?.id || admin?._id;
+
   const base = {
     ...c,
     _id: c.id,
@@ -63,44 +65,39 @@ const transformGetCustomer = async (c) => {
     SitePlan: parseJSON(c.SitePlan),
   };
 
-  // FIX: Prisma column is AssignToId, not AssignTo
-  /*   const assignToDoc = c.AssignToId
-      ? await prisma.admin.findUnique({
-        where: { id: c.AssignToId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          city: true,
-        },
-      })
-      : null; */
+  // Hide contact number only for user/agent viewing assigned customers
+  if (
+    admin &&
+    (admin.role === "agent" || admin.role === "user") &&
+    base.CreatedById !== adminId
+  ) {
+    base.ContactNumber = "forbidden"; // or "XXXXXXXXXX"
+  }
 
-  return {
-    ...base,
-    /* AssignTo: assignToDoc
-      ? {
-        _id: assignToDoc.id,
-        name: assignToDoc.name,
-        email: assignToDoc.email,
-        role: assignToDoc.role,
-        city: assignToDoc.city,
-      }
-      : null, */
-  };
+  return base;
 };
 
 // ------------------------------------------------------
 //      Transform single customer (getCustomerById)
 // ------------------------------------------------------
-const transformCustomer = async (c) => {
+const transformCustomer = async (c, admin = null) => {
+  const adminId = admin?.id || admin?._id;
+
   const base = {
     ...c,
     _id: c.id,
     CustomerImage: parseJSON(c.CustomerImage),
     SitePlan: parseJSON(c.SitePlan),
   };
+
+  // Hide contact number for assigned customers (not self-created)
+  if (
+    admin &&
+    (admin.role === "agent" || admin.role === "user") &&
+    base.CreatedById !== adminId
+  ) {
+    base.ContactNumber = "forbidden"; // or "XXXXXXXXXX"
+  }
 
   const [
     campaignDoc,
@@ -138,15 +135,15 @@ const transformCustomer = async (c) => {
     }),
     c.AssignToId
       ? prisma.admin.findUnique({
-        where: { id: c.AssignToId },
-        select: { id: true, name: true, email: true, role: true, city: true },
-      })
+          where: { id: c.AssignToId },
+          select: { id: true, name: true, email: true, role: true, city: true },
+        })
       : null,
     c.CreatedBy
       ? prisma.admin.findUnique({
-        where: { id: c.CreatedBy },
-        select: { id: true, name: true, email: true },
-      })
+          where: { id: c.CreatedBy },
+          select: { id: true, name: true, email: true },
+        })
       : null,
   ]);
 
@@ -171,26 +168,27 @@ const transformCustomer = async (c) => {
     Location: locationDoc
       ? { _id: locationDoc.id, Name: locationDoc.Name }
       : { _id: null, Name: c.Location || "" },
+
     SubLocation: subLocationDoc
       ? { _id: subLocationDoc.id, Name: subLocationDoc.Name }
       : { _id: null, Name: c.SubLocation || "" },
 
     AssignTo: assignToDoc
       ? {
-        _id: assignToDoc.id,
-        name: assignToDoc.name,
-        email: assignToDoc.email,
-        role: assignToDoc.role,
-        city: assignToDoc.city,
-      }
+          _id: assignToDoc.id,
+          name: assignToDoc.name,
+          email: assignToDoc.email,
+          role: assignToDoc.role,
+          city: assignToDoc.city,
+        }
       : null,
 
     CreatedBy: createdByDoc
       ? {
-        _id: createdByDoc.id,
-        name: createdByDoc.name,
-        email: createdByDoc.email,
-      }
+          _id: createdByDoc.id,
+          name: createdByDoc.name,
+          email: createdByDoc.email,
+        }
       : null,
   };
 };
@@ -209,6 +207,73 @@ const toBoolean = (val) => {
   return undefined; // if invalid or empty string
 };
 
+
+export const getCustomerAccessFilter = async (admin) => {
+  if (!admin) return { id: "__none__" }; // fail closed
+
+  const adminId = admin.id || admin._id;
+  const AND = [];
+
+  // Original Condition #1
+  if (admin.role !== "administrator" && admin.clientId) {
+    AND.push({
+      OR: [
+        { ClientId: admin.clientId },
+        { CreatedById: adminId },
+      ],
+    });
+  }
+
+  // Original Condition #2
+  if (admin.role === "user" || admin.role === "agent") {
+    AND.push({
+      OR: [
+        { AssignTo: { some: { id: adminId } } },
+        { CreatedById: adminId },
+      ],
+    });
+  }
+  // Original Condition #3
+  else if (admin.role === "city_admin") {
+    const assignedCampaignsData = await prisma.customer.findMany({
+      where: {
+        AssignTo: {
+          some: { id: adminId },
+        },
+      },
+      select: {
+        Campaign: true,
+      },
+      distinct: ["Campaign"],
+    });
+
+    const assignedCampaigns = assignedCampaignsData
+      .map((c) => c.Campaign)
+      .filter(Boolean);
+
+    AND.push({
+      City: {
+        equals: admin.city,
+      },
+    });
+
+    AND.push({
+      OR: [
+        { CreatedById: adminId },
+        { AssignTo: { some: { id: adminId } } },
+        ...(assignedCampaigns.length > 0
+          ? [{ Campaign: { in: assignedCampaigns } }]
+          : []),
+      ],
+    });
+  }
+
+  if (AND.length === 0) {
+    return {};
+  }
+
+  return { AND };
+};
 
 // --------------------------------------------
 // REMOVE DUPLICATES BY CONTACTNUMBER, KEEP LAST UPDATED
@@ -266,43 +331,11 @@ export const getAllCustomers = async (req, res, next) => {
     // ---------------------------------------------------------
     let AND = [];
 
-    if (admin.role !== "administrator" && admin.clientId) {
-      AND.push({
-        OR: [
-          { ClientId: admin.clientId },
-          { CreatedById: adminId }
-        ]
-      });
+    const accessFilter = await getCustomerAccessFilter(admin);
+    if (Object.keys(accessFilter).length > 0) {
+      AND.push(accessFilter);
     }
 
-    if (admin.role === "user") {
-      AND.push({
-        OR: [
-          { AssignTo: { some: { id: adminId } } },
-          { CreatedById: adminId }
-        ]
-      });
-    } else if (admin.role === "city_admin") {
-      const assignedCampaignsData = await prisma.customer.findMany({
-        where: { AssignTo: { some: { id: adminId } } },
-        select: { Campaign: true },
-        distinct: ["Campaign"]
-      });
-
-      const assignedCampaigns = assignedCampaignsData
-        .map(c => c.Campaign)
-        .filter(Boolean);
-
-      AND.push({ City: { equals: admin.city } });
-
-      AND.push({
-        OR: [
-          { CreatedById: adminId },
-          { AssignTo: { some: { id: adminId } } },
-          ...(assignedCampaigns.length > 0 ? [{ Campaign: { in: assignedCampaigns } }] : []),
-        ]
-      });
-    }
 
     const where = AND.length ? { AND } : {};
 
@@ -315,7 +348,7 @@ export const getAllCustomers = async (req, res, next) => {
       include: { AssignTo: true },
     });
 
-    const transformed = await Promise.all(customers.map(transformGetCustomer));
+    const transformed = await Promise.all(customers.map(transformGetCustomer,admin));
 
     // ---------------------------------------------------------
     // 5. SAVE TO CACHE FOR NEXT TIME
@@ -360,54 +393,10 @@ export const getTodayCustomers = async (req, res, next) => {
     // --------------------------------------------
     // ROLE-BASED FILTERS
     // --------------------------------------------
-    if (admin.role !== "administrator" && admin.clientId) {
-      AND.push({
-        OR: [
-          { ClientId: admin.clientId },
-          { CreatedById: adminId }
-        ],
-      });
-    }
+    const accessFilter = await getCustomerAccessFilter(admin);
 
-    if (admin.role === "user") {
-      AND.push({
-        OR: [
-          { AssignTo: { some: { id: adminId } } },
-          { CreatedById: adminId }
-        ],
-      });
-    } else if (admin.role === "city_admin") {
-      // Fetch assigned campaigns
-      const assignedCampaignsData = await prisma.customer.findMany({
-        where: { AssignTo: { some: { id: adminId } } },
-        select: { Campaign: true },
-        distinct: ["Campaign"],
-      });
-
-      const assignedCampaigns = assignedCampaignsData
-        .map((c) => c.Campaign)
-        .filter(Boolean);
-
-      const cityAdminOr = [
-        { CreatedById: adminId },
-        {
-          AND: [
-            { AssignTo: { some: { id: adminId } } },
-            { City: { contains: admin.city } },
-          ],
-        },
-      ];
-
-      if (assignedCampaigns.length > 0) {
-        cityAdminOr.push({
-          AND: [
-            { Campaign: { in: assignedCampaigns } },
-            { City: { contains: admin.city } },
-          ],
-        });
-      }
-
-      AND.push({ OR: cityAdminOr });
+    if (Object.keys(accessFilter).length > 0) {
+      AND.push(accessFilter);
     }
 
     // --------------------------------------------
@@ -416,14 +405,14 @@ export const getTodayCustomers = async (req, res, next) => {
     const customers = await prisma.customer.findMany({
       where: { AND },
       orderBy: { createdAt: "desc" },
-      distinct: ["ContactNumber"], // 🚀 Enforcing your unique leads rule
+      //distinct: ["ContactNumber"], // 🚀 Enforcing your unique leads rule
 
     });
 
     // 🚀 OPTIMIZATION 3: Concurrent Transformation
     // Forces the loop to process all records simultaneously instead of waiting sequentially.
     const transformedCustomers = await Promise.all(
-      customers.map((c) => transformGetCustomer(c))
+      customers.map((c) => transformGetCustomer(c,admin))
     );
 
     return res.status(200).json(transformedCustomers);
@@ -479,19 +468,26 @@ const radarChartCache = {
 };
 
 // Set cache duration (e.g., 5 minutes)
-const CACHE_TTL_MS = 0.1 * 60 * 1000; 
+const CACHE_TTL_MS = 0.1 * 60 * 1000;
 
 
 
 
 export const getDashboardStatsCount = async (req, res, next) => {
   try {
+
+    const admin = req.admin;
+
+    const accessFilter = await getCustomerAccessFilter(admin);
+    const where = Object.keys(accessFilter).length
+      ? { AND: [accessFilter] }
+      : {};
     const now = Date.now();
 
     // 1. Serve from cache if valid
     if (dashboardCache.data !== null && dashboardCache.expiry > now) {
-      return res.status(200).json({ 
-        success: true, 
+      return res.status(200).json({
+        success: true,
         data: dashboardCache.data,
         source: "cache"
       });
@@ -506,19 +502,20 @@ export const getDashboardStatsCount = async (req, res, next) => {
     ] = await Promise.all([
       // 1. Leads: Unique customers by ContactNumber
       prisma.customer.findMany({
+        where,
         distinct: ["ContactNumber"],
-        select: { id: true }, 
+        select: { id: true },
       }),
-      
+
       // 2. Contacts: Native DB counting
       prisma.contact.count(),
-      
+
       // 3. Converted Leads: Unique customers in the Followup table
       prisma.followup.findMany({
         distinct: ["customerId"],
         select: { id: true }
       }),
-      
+
       // 4. Income: Fetching only the Income field to sum it up
       // Note: If 'Income' is saved as an Int/Float in your schema, 
       // you could use prisma.income.aggregate({ _sum: { Income: true } }) here instead.
@@ -529,7 +526,7 @@ export const getDashboardStatsCount = async (req, res, next) => {
 
     // Safely calculate the total revenue on the server
     const totalRevenue = incomeRecords.reduce(
-      (sum, item) => sum + (Number(item.Name) || 0), 
+      (sum, item) => sum + (Number(item.Name) || 0),
       0
     );
 
@@ -545,8 +542,8 @@ export const getDashboardStatsCount = async (req, res, next) => {
     dashboardCache.expiry = now + CACHE_TTL_MS;
 
     // 4. Return fresh response
-    return res.status(200).json({ 
-      success: true, 
+    return res.status(200).json({
+      success: true,
       data: stats,
       source: "database"
     });
@@ -560,6 +557,13 @@ export const getDashboardStatsCount = async (req, res, next) => {
 
 export const getLeadSourcesStats = async (req, res, next) => {
   try {
+    const admin = req.admin;
+
+    const accessFilter = await getCustomerAccessFilter(admin);
+    const where = Object.keys(accessFilter).length
+      ? { AND: [accessFilter] }
+      : {};
+
     const now = Date.now();
 
     if (leadSourceCache.data !== null && leadSourceCache.expiry > now) {
@@ -572,12 +576,13 @@ export const getLeadSourcesStats = async (req, res, next) => {
 
     // 🚀 FIX: Removed the "where" clause so we fetch ALL unique leads
     const uniqueCustomers = await prisma.customer.findMany({
-     // distinct: ["ContactNumber"],
+      where,
+      // distinct: ["ContactNumber"],
       select: { ReferenceId: true },
     });
 
     const counts = {};
-    
+
     uniqueCustomers.forEach((item) => {
       // Only count it if it actually exists
       if (item.ReferenceId) {
@@ -609,6 +614,21 @@ export const getLeadSourcesStats = async (req, res, next) => {
 
 export const getLeadTemperatureStats = async (req, res, next) => {
   try {
+    const admin = req.admin;
+
+    const accessFilter = await getCustomerAccessFilter(admin);
+
+    const where = {
+      AND: [
+        accessFilter,
+        {
+          LeadTemperature: {
+            not: null,
+            not: ""
+          }
+        }
+      ]
+    };
     const now = Date.now();
 
     // 1. Serve from cache if valid
@@ -622,12 +642,10 @@ export const getLeadTemperatureStats = async (req, res, next) => {
 
     // 2. Fetch UNIQUE customers by ContactNumber, selecting ONLY the LeadTemperature
     const uniqueCustomers = await prisma.customer.findMany({
-      where: {
-        LeadTemperature: { not: null, not: "" }, // Ignore empty fields
-      },
+      where,
       //distinct: ["ContactNumber"], // 🚀 Filters duplicates natively
-      select: { 
-        LeadTemperature: true 
+      select: {
+        LeadTemperature: true
       },
     });
 
@@ -638,7 +656,7 @@ export const getLeadTemperatureStats = async (req, res, next) => {
     uniqueCustomers.forEach((item) => {
       // Clean string (e.g., " Hot ", "HOT" -> "hot")
       const tempString = item.LeadTemperature.toLowerCase().trim();
-      
+
       // Only count if it's a valid key ('hot', 'warm', or 'cold')
       if (tempString in counts) {
         counts[tempString] += 1;
@@ -664,6 +682,13 @@ export const getLeadTemperatureStats = async (req, res, next) => {
 
 export const getVisitorsChartStats = async (req, res, next) => {
   try {
+    const admin = req.admin;
+
+    const accessFilter = await getCustomerAccessFilter(admin);
+    const where = Object.keys(accessFilter).length
+      ? { AND: [accessFilter] }
+      : {};
+
     const now = new Date();
 
     // 1. Serve from cache if valid
@@ -677,6 +702,7 @@ export const getVisitorsChartStats = async (req, res, next) => {
 
     // 2. Fetch UNIQUE customers by ContactNumber, selecting ONLY createdAt
     const uniqueCustomers = await prisma.customer.findMany({
+      where,
       distinct: ["ContactNumber"],
       select: { createdAt: true },
     });
@@ -788,9 +814,9 @@ export const getFollowupChartStats = async (req, res, next) => {
 
     // 2. Fetch ONLY the necessary date strings
     const allFollowups = await prisma.followup.findMany({
-      select: { 
-        StartDate: true, 
-        FollowupNextDate: true 
+      select: {
+        StartDate: true,
+        FollowupNextDate: true
       },
     });
 
@@ -823,7 +849,7 @@ export const getFollowupChartStats = async (req, res, next) => {
 
       // Prefer FollowupNextDate over StartDate
       const checkDate = followupDate || startDate;
-      
+
       // Skip if date parsing failed
       if (!checkDate || isNaN(checkDate.getTime())) return;
 
@@ -861,6 +887,21 @@ export const getFollowupChartStats = async (req, res, next) => {
 
 export const getCustomerLocationStats = async (req, res, next) => {
   try {
+    const admin = req.admin;
+
+    const accessFilter = await getCustomerAccessFilter(admin);
+
+    const where = {
+      AND: [
+        accessFilter,
+        {
+          Location: {
+            not: null,
+            not: ""
+          }
+        }
+      ]
+    };
     const now = Date.now();
 
     // 1. Serve from cache if valid
@@ -874,12 +915,10 @@ export const getCustomerLocationStats = async (req, res, next) => {
 
     // 2. Fetch UNIQUE customers by ContactNumber, selecting ONLY the Location
     const uniqueCustomers = await prisma.customer.findMany({
-      where: {
-        Location: { not: null, not: "" }, // Ignore empty locations
-      },
+      where,
       distinct: ["ContactNumber"], // Filters duplicates natively
-      select: { 
-        Location: true 
+      select: {
+        Location: true
       },
     });
 
@@ -916,10 +955,14 @@ export const getCustomerLocationStats = async (req, res, next) => {
 
 
 
-
-
 export const getRadarChartStats = async (req, res, next) => {
   try {
+    const admin = req.admin;
+
+    const accessFilter = await getCustomerAccessFilter(admin);
+    const where = Object.keys(accessFilter).length
+      ? { AND: [accessFilter] }
+      : {};
     const now = Date.now();
 
     // 1. Serve from cache if valid
@@ -933,6 +976,7 @@ export const getRadarChartStats = async (req, res, next) => {
 
     // 2. Fetch UNIQUE customers by ContactNumber, selecting ONLY the AssignTo relation
     const uniqueCustomers = await prisma.customer.findMany({
+      where,
       distinct: ["ContactNumber"], // Keep your unique leads logic intact
       select: {
         AssignTo: {
@@ -961,8 +1005,8 @@ export const getRadarChartStats = async (req, res, next) => {
     const result = Object.values(userMap)
       .map((user) => ({
         ...user,
-        percentage: totalCustomers > 0 
-          ? Math.round((user.customers / totalCustomers) * 100) 
+        percentage: totalCustomers > 0
+          ? Math.round((user.customers / totalCustomers) * 100)
           : 0,
       }))
       .sort((a, b) => b.customers - a.customers);
@@ -991,43 +1035,10 @@ export const getCustomerCount = async (req, res, next) => {
     // --------------------------------------------
     // 1. ROLE-BASED FILTERS
     // --------------------------------------------
-    if (admin.role !== "administrator" && admin.clientId) {
-      AND.push({
-        OR: [
-          { ClientId: admin.clientId },
-          { CreatedById: admin.id || admin._id }
-        ]
-      });
-    }
+    const accessFilter = await getCustomerAccessFilter(admin);
 
-    if (admin.role === "user") {
-      const adminId = admin.id || admin._id;
-      AND.push({
-        OR: [
-          { AssignTo: { some: { id: adminId } } },
-          { CreatedById: adminId }
-        ]
-      });
-    } else if (admin.role === "city_admin") {
-      const adminId = admin.id || admin._id;
-
-      // 🚀 OPTIMIZATION 1: Index-Only Scan for the sub-query
-      const assignedCampaignsData = await prisma.customer.findMany({
-        where: { AssignTo: { some: { id: adminId } } },
-        distinct: ["Campaign"],
-        select: { Campaign: true } // DB reads from Index only, bypassing the heap
-      });
-
-      const assignedCampaigns = assignedCampaignsData.map(c => c.Campaign).filter(Boolean);
-
-      AND.push({ City: { equals: admin.city } });
-      AND.push({
-        OR: [
-          { CreatedById: adminId },
-          { AssignTo: { some: { id: adminId } } },
-          ...(assignedCampaigns.length > 0 ? [{ Campaign: { in: assignedCampaigns } }] : []),
-        ]
-      });
+    if (Object.keys(accessFilter).length > 0) {
+      AND.push(accessFilter);
     }
 
     // --------------------------------------------
@@ -1048,7 +1059,7 @@ export const getCustomerCount = async (req, res, next) => {
       // 🚀 OPTIMIZATION 2: The Index-Only Scan Trick
       // By selecting the exact field used in 'distinct', the DB resolves this 
       // instantly from memory without reading the actual row data.
-      select: { ContactNumber: true }, 
+      select: { ContactNumber: true },
     });
 
     return res.status(200).json({
@@ -1070,7 +1081,7 @@ export const getCustomer = async (req, res, next) => {
       Campaign, CustomerType, CustomerSubType, LeadTemperature, StatusType,
       City, Location, SubLocation, LeadType, Keyword, SearchIn, ReferenceId,
       MinPrice, MaxPrice, Price, isFavourite, StartDate, EndDate, Limit,
-      Skip = 0, sort, User, ContactNumber
+      Skip = 0, sort, User, ContactNumber, CustomerFields,
     } = req.query;
 
     let AND = [];
@@ -1080,45 +1091,10 @@ export const getCustomer = async (req, res, next) => {
     // --------------------------------------------
     // 1. ROLE-BASED FILTERS (Database Level)
     // --------------------------------------------
-    if (admin.role !== "administrator" && admin.clientId) {
-      AND.push({
-        OR: [
-          { ClientId: admin.clientId },
-          { CreatedById: admin.id || admin._id }
-        ]
-      });
-    }
+    const accessFilter = await getCustomerAccessFilter(admin);
 
-    if (admin.role === "user") {
-      const adminId = admin.id || admin._id;
-      AND.push({
-        OR: [
-          { AssignTo: { some: { id: adminId } } },
-          { CreatedById: adminId }
-        ]
-      });
-    } else if (admin.role === "city_admin") {
-      const adminId = admin.id || admin._id;
-
-      const assignedCampaignsData = await prisma.customer.findMany({
-        where: { AssignTo: { some: { id: adminId } } },
-        select: { Campaign: true },
-        distinct: ["Campaign"]
-      });
-
-      const assignedCampaigns = assignedCampaignsData
-        .map(c => c.Campaign)
-        .filter(Boolean);
-
-      AND.push({ City: { equals: admin.city } });
-
-      AND.push({
-        OR: [
-          { CreatedById: adminId },
-          { AssignTo: { some: { id: adminId } } },
-          ...(assignedCampaigns.length > 0 ? [{ Campaign: { in: assignedCampaigns } }] : []),
-        ]
-      });
+    if (Object.keys(accessFilter).length > 0) {
+      AND.push(accessFilter);
     }
 
     // --------------------------------------------
@@ -1138,6 +1114,40 @@ export const getCustomer = async (req, res, next) => {
     if (ContactNumber) AND.push({ ContactNumber: { contains: ContactNumber.trim() } });
     if (ReferenceId) AND.push({ ReferenceId: { contains: ReferenceId.trim() } });
     if (Price) AND.push({ Price: { contains: Price.trim() } });
+
+    // --------------------------------------------
+    // 2B. CUSTOM FIELD FILTERS (dynamic JSON)
+    // --------------------------------------------
+    if (CustomerFields) {
+      try {
+        // Express automatically decodes the URL into a string.
+        // This will successfully turn '{"State":"Gujarat"}' into a real object.
+        const customFieldFilters = JSON.parse(CustomerFields);
+
+        // Add this line to see the proof in your server console!
+        console.log("✅ Parsed CustomerFields from Frontend:", customFieldFilters);
+
+        Object.entries(customFieldFilters).forEach(([key, value]) => {
+          const trimmed = String(value ?? "").trim();
+          if (!trimmed) return;
+
+          AND.push({
+            CustomerFields: {
+              // 1. Use standard SQL JSON dot-notation for the path
+              path: `$.${key}`,
+
+              // 2. Use 'equals' instead of 'string_contains'
+              // string_contains inside JSON columns often fails in MySQL because 
+              // the DB stores JSON string values wrapped in internal quotes. 
+              // Prisma's 'equals' handles this natively.
+              equals: trimmed,
+            },
+          });
+        });
+      } catch (err) {
+        console.error("❌ JSON Parse Error:", err);
+      }
+    }
 
     const cleanNumber = (val) => Number(String(val || "").replace(/[^0-9]/g, ""));
 
@@ -1159,7 +1169,7 @@ export const getCustomer = async (req, res, next) => {
     // --------------------------------------------
     // 3. FIX: ADVANCED FILTERS BROUGHT TO DB LEVEL
     // --------------------------------------------
-    
+
     // Fix A: Move User filtering directly into Prisma query where clause
     if (User) {
       const userLower = User.toLowerCase();
@@ -1226,10 +1236,10 @@ export const getCustomer = async (req, res, next) => {
       ? [{ createdAt: "asc" }]
       : [{ updatedAt: "desc" }, { createdAt: "desc" }];
 
-   // --------------------------------------------
+    // --------------------------------------------
     // 🚀 OPTIMIZED FETCH (Concurrent Execution)
     // --------------------------------------------
-    
+
     // We fire BOTH the count and the page fetch at the exact same time.
     // We let Prisma natively handle skip/take instead of manual JS slicing.
     const [totalRecords, customers] = await Promise.all([
@@ -1237,10 +1247,10 @@ export const getCustomer = async (req, res, next) => {
       ContactNumber
         ? prisma.customer.count({ where })
         : prisma.customer.findMany({
-            where,
-            distinct: ["ContactNumber"],
-            select: { id: true },
-          }).then(res => res.length),
+          where,
+          distinct: ["ContactNumber"],
+          select: { id: true },
+        }).then(res => res.length),
 
       // 2. Fetch the actual page data natively
       prisma.customer.findMany({
@@ -1263,14 +1273,76 @@ export const getCustomer = async (req, res, next) => {
     // --------------------------------------------
     // FINAL TRANSFORM & RESPONSE
     // --------------------------------------------
-    const transformed = await Promise.all(customers.map(transformGetCustomer));
-    
+    const transformed = await Promise.all(customers.map(transformGetCustomer,admin));
+    if (admin.role === "agent") {
+      transformed.forEach((customer) => {
+        if (customer.CreatedById !== (admin.id || admin._id)) {
+          customer.ContactNumber = "Forbidden"; // or "**********"
+        }
+      });
+    }
+
     // Optional but highly recommended: Send the totalRecords back in headers or a wrapper 
     // so the frontend doesn't have to guess the pagination.
     res.setHeader('X-Total-Count', totalRecords);
-    
+
     return res.status(200).json(transformed);
 
+  } catch (error) {
+    next(new ApiError(500, error.message));
+  }
+};
+
+// GET /customer/custom-field-values
+// Scans CustomerFields across records the admin can see, returns { key: [distinct values] }
+export const getCustomFieldValues = async (req, res, next) => {
+  try {
+    const admin = req.admin;
+    let AND = [];
+
+    // same role scoping as getCustomer — otherwise a client/city-scoped admin
+    // could see custom field values from data they shouldn't have access to
+    if (admin.role !== "administrator" && admin.clientId) {
+      AND.push({
+        OR: [{ ClientId: admin.clientId }, { CreatedById: admin.id || admin._id }],
+      });
+    }
+    if (admin.role === "user") {
+      const adminId = admin.id || admin._id;
+      AND.push({
+        OR: [{ AssignTo: { some: { id: adminId } } }, { CreatedById: adminId }],
+      });
+    } else if (admin.role === "city_admin") {
+      AND.push({ City: { equals: admin.city } });
+    }
+
+    const where = AND.length ? { AND } : {};
+
+    const rows = await prisma.customer.findMany({
+      where,
+      select: { CustomerFields: true },
+    });
+
+    const valueMap = {};
+    rows.forEach((row) => {
+      const cf = row.CustomerFields;
+      if (!cf || typeof cf !== "object") return;
+      Object.entries(cf).forEach(([key, value]) => {
+        const trimmed = String(value ?? "").trim();
+        if (!trimmed) return;
+        if (!valueMap[key]) valueMap[key] = new Set();
+        valueMap[key].add(trimmed);
+      });
+    });
+
+    const result = Object.fromEntries(
+      Object.entries(valueMap).map(([key, set]) => [
+        key,
+        Array.from(set).sort((a, b) => a.localeCompare(b)).slice(0, 200), // cap payload size
+      ])
+    );
+
+    return res.status(200).json(result);
   } catch (error) {
     next(new ApiError(500, error.message));
   }
@@ -1295,7 +1367,7 @@ export const getCustomerById = async (req, res, next) => {
     if (admin.role === "city_admin" && customer.City !== admin.city)
       return next(new ApiError(403, "Access denied"));
 
-    const response = await transformCustomer(customer);
+    const response = await transformCustomer(customer,admin);
     res.status(200).json(response);
   } catch (error) {
     next(new ApiError(500, error.message));
@@ -1492,7 +1564,7 @@ export const createCustomer = async (req, res, next) => {
 
     res
       .status(201)
-      .json({ success: true, data: await transformCustomer(newCustomer) });
+      .json({ success: true, data: await transformCustomer(newCustomer,admin) });
   } catch (error) {
     next(new ApiError(500, error.message));
   }
@@ -1776,7 +1848,7 @@ export const updateCustomer = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Customer updated successfully",
-      data: await transformGetCustomer(updated),
+      data: await transformGetCustomer(updated,admin),
     });
   } catch (error) {
     next(new ApiError(500, error.message));
@@ -1864,7 +1936,7 @@ export const assignCustomer = async (req, res, next) => {
     // RESTRICTION: USER can only use selected IDs
     // (applies to both assign AND remove)
     // ------------------------------------------------
-    const hasUser = assignToAdmin.some((a) => a.role === "user");
+    const hasUser = assignToAdmin.some((a) => a.role === "user" || a.role === "agent");
 
     if (hasUser) {
       if (!customerIds.length || campaign) {
@@ -1937,7 +2009,7 @@ export const assignCustomer = async (req, res, next) => {
         return next(
           new ApiError(403, "You can only assign to users in your city")
         );
-    } else if (admin.role === "user") {
+    } else if (admin.role === "user" || admin.role === "agent") {
       return next(
         new ApiError(403, "Users are not allowed to assign customers")
       );
@@ -1972,7 +2044,7 @@ export const assignCustomer = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `${actionLabel} ${updated.length} customers successfully`,
-      data: await Promise.all(updated.map(transformGetCustomer)),
+      data: await Promise.all(updated.map(transformGetCustomer,admin)),
     });
   } catch (error) {
     next(new ApiError(500, error.message));
@@ -2031,7 +2103,7 @@ export const getFavouriteCustomers = async (req, res, next) => {
       where,
       orderBy: { createdAt: "desc" },
     });
-    const transformed = await Promise.all(favs.map(transformGetCustomer));
+    const transformed = await Promise.all(favs.map(transformGetCustomer,admin));
     res
       .status(200)
       .json({ success: true, count: transformed.length, data: transformed });
@@ -2451,7 +2523,7 @@ export const getRecommendedCustomer = async (req, res, next) => {
     // --------------------------------------------
 
     const transformed = await Promise.all(
-      customers.map(transformGetCustomer)
+      customers.map(transformGetCustomer,admin)
     );
 
     res.status(200).json({
@@ -2810,7 +2882,6 @@ export const startCall = async (req, res, next) => {
   }
 };
 
-
 export const getCallLogs = async (req, res) => {
   try {
     const response = await fetch(
@@ -2847,9 +2918,6 @@ export const getCallLogs = async (req, res) => {
     });
   }
 };
-
-
-
 
 export const getCallReport = async (req, res, next) => {
   try {
@@ -2906,7 +2974,6 @@ export const deleteCallLogById = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 export const syncCallLogs = async (req, res) => {
   try {
@@ -3000,7 +3067,6 @@ export const syncCallLogs = async (req, res) => {
     });
   }
 };
-
 
 //deal closing controllers 
 
@@ -3174,7 +3240,7 @@ export const getClosedDeals = async (req, res, next) => {
     }
 
     // ── Transform ──────────────────────────────────────────────────────────
-    const transformed = await Promise.all(customers.map(transformGetCustomer));
+    const transformed = await Promise.all(customers.map(transformGetCustomer,admin));
 
     return res.status(200).json({
       success: true,
@@ -3378,7 +3444,7 @@ export const getCustomerShortlist = async (req, res, next) => {
     // 3. TRANSFORM DATA
     const transformedProperties = await Promise.all(
       shortlists.map(async (item) => {
-        const transformedProperty = await transformGetCustomer(item.property);
+        const transformedProperty = await transformGetCustomer(item.property,admin);
         return {
           ...transformedProperty,
           _shortlistInfo: {
@@ -3490,6 +3556,129 @@ export const updateShortlistStatus = async (req, res, next) => {
       message: `Status updated to '${status}' for ${result.count} properties.`
     });
 
+  } catch (error) {
+    next(new ApiError(500, error.message));
+  }
+};
+
+
+// archieve customer
+
+// ─── Archive a Customer (individual, hides only for this admin) ──────────────
+export const archiveCustomer = async (req, res, next) => {
+  try {
+    const admin = req.admin;
+    const { id } = req.params;
+    const adminId = admin.id || admin._id;
+
+    const customer = await prisma.customer.findUnique({ where: { id } });
+    if (!customer) return res.status(404).json({ success: false, message: "Customer not found" });
+
+    // upsert so a double-click / re-fire doesn't throw a unique constraint error
+    const archived = await prisma.customerArchive.upsert({
+      where: { customerId_adminId: { customerId: id, adminId } },
+      update: {},
+      create: { customerId: id, adminId },
+    });
+
+    return res.status(200).json({ success: true, data: archived });
+  } catch (error) {
+    next(new ApiError(500, error.message));
+  }
+};
+
+// ─── Unarchive a Customer (undo, only removes the caller's own record) ───────
+export const unarchiveCustomer = async (req, res, next) => {
+  try {
+    const admin = req.admin;
+    const { id } = req.params;
+    const adminId = admin.id || admin._id;
+
+    await prisma.customerArchive.deleteMany({
+      where: { customerId: id, adminId },
+    });
+
+    return res.status(200).json({ success: true, message: "Customer unarchived" });
+  } catch (error) {
+    next(new ApiError(500, error.message));
+  }
+};
+
+// ─── Get My Archived Customers ────────────────────────────────────────────────
+export const getArchivedCustomers = async (req, res, next) => {
+  try {
+    const admin = req.admin;
+    const adminId = admin.id || admin._id;
+
+    const {
+      Campaign, City, Location, Keyword,
+      StartDate, EndDate,
+      Limit, Skip = 0,
+    } = req.query;
+
+    const offset = Number(Skip);
+    let AND = [{ archivedBy: { some: { adminId } } }]; // only this admin's archived customers
+
+    if (Campaign) AND.push({ Campaign: { contains: Campaign.trim() } });
+    if (City) AND.push({ City: { contains: City.trim() } });
+    if (Location) AND.push({ Location: { contains: Location.trim() } });
+
+    if (Keyword) {
+      const tokens = Keyword.trim().split(" ").filter(Boolean);
+      const fields = ["customerName", "ContactNumber", "City", "Location", "Campaign", "Description"];
+      AND.push({
+        AND: tokens.map((t) => ({
+          OR: fields.map((field) => ({ [field]: { contains: t } })),
+        })),
+      });
+    }
+
+    const where = { AND };
+
+    const total = await prisma.customer.count({ where });
+
+    let customers = await prisma.customer.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      skip: offset,
+      take: Limit !== undefined ? Number(Limit) : undefined,
+      include: {
+        AssignTo: true,
+        archivedBy: { where: { adminId }, select: { createdAt: true } }, // so you can show "archived 2d ago"
+      },
+    });
+
+    if (StartDate && EndDate) {
+      const parseDMY = (str) => {
+        if (!str) return null;
+        const parts = str.split("-");
+        if (parts.length !== 3) return null;
+        let day, month, year;
+        if (parts[0].length === 4) [year, month, day] = parts.map(Number);
+        else[day, month, year] = parts.map(Number);
+        const d = new Date(year, month - 1, day);
+        d.setHours(0, 0, 0, 0);
+        return isNaN(d.getTime()) ? null : d;
+      };
+      const start = parseDMY(StartDate);
+      const end = parseDMY(EndDate);
+      if (start && end) {
+        end.setHours(23, 59, 59, 999);
+        customers = customers.filter((c) => {
+          const d = parseDMY(c.CustomerDate);
+          return d && d >= start && d <= end;
+        });
+      }
+    }
+
+    const transformed = await Promise.all(customers.map(transformGetCustomer));
+
+    return res.status(200).json({
+      success: true,
+      total,
+      count: transformed.length,
+      data: transformed,
+    });
   } catch (error) {
     next(new ApiError(500, error.message));
   }

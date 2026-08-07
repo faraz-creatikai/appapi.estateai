@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import MailComposer from "nodemailer/lib/mail-composer/index.js";
+import { ImapFlow } from "imapflow";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -6,7 +8,7 @@ dotenv.config();
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT || 587,
-  secure: false, // use true for 465
+  secure: true, // use true for 465
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -17,12 +19,43 @@ const transporter = nodemailer.createTransport({
 const smtpTransporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT || 587,
-  secure: false,
+  secure: true,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
 });
+
+
+const saveToSentFolder = async (rawEmail) => {
+  const client = new ImapFlow({
+    host: "imap.hostinger.com",
+    port: 993,
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    // Optional: Set to false to hide those verbose IMAP logs in your terminal
+    logger: false,
+  });
+
+  try {
+    await client.connect();
+
+    // Append the raw email to Hostinger's Sent folder
+    // The ['\\Seen'] flag marks it as read so it doesn't show as unread in Sent
+    await client.append("INBOX.Sent", rawEmail, ["\\Seen"]);
+
+    console.log("✅ Email successfully saved to INBOX.Sent");
+  } catch (error) {
+    console.error("❌ Failed to save email to Sent folder:", error);
+  } finally {
+    // Always ensure you log out to prevent hanging connections
+    await client.logout();
+  }
+};
+
 
 // 3️⃣ Generic sendEmail function (uses Hostinger SMTP)
 export const sendEmail = async (to, subject, html) => {
@@ -33,11 +66,27 @@ export const sendEmail = async (to, subject, html) => {
       subject,
       html,
     };
-    const info = await transporter.sendMail(mailOptions);
+
+    // Generate raw RFC822 email
+    const rawEmail = await new MailComposer(mailOptions).compile().build();
+
+    // Send email
+    const info = await transporter.sendMail({
+      envelope: {
+        from: process.env.SMTP_USER,
+        to,
+      },
+      raw: rawEmail,
+    });
+
     console.log("✅ Email sent:", info.response);
+
+    // Save to Hostinger Sent folder
+    await saveToSentFolder(rawEmail);
+
     return info;
   } catch (error) {
-    console.error("❌ Email error:", error.message);
+    console.error("❌ Email error:", error);
     throw error;
   }
 };
@@ -84,12 +133,14 @@ export const sendSystemEmail = async (to, userName, password, role) => {
       </div>
     `;
 
+
     const mailOptions = {
       from: `"System Notification" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html,
     };
+
 
     const info = await smtpTransporter.sendMail(mailOptions);
     console.log("✅ System email sent:", info.response);

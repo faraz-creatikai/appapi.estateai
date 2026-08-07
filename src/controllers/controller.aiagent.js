@@ -1,6 +1,7 @@
 // controllers/aiAgent.controller.js
-import { WebhookIntegratedAgent } from "../ai/agent.js";
+import { productPriceCompareAgent, WebhookIntegratedAgent } from "../ai/agent.js";
 import prisma from "../config/prismaClient.js";
+import { getAggregatedProducts } from "../jobs/searchApiService.js";
 import ApiError from "../utils/ApiError.js";
 
 // Helper: Convert Prisma output to MongoDB-style + append optional webhook configuration
@@ -307,4 +308,42 @@ export const runWebhookAgent = async (req, res, next) => {
     } catch (error) {
         next(new ApiError(400, error.message));
     }
+};
+
+
+export const compareProductPrice = async (req, res, next) => {
+  try {
+    const productName = String(req.body.product_name || req.body.query || "").trim();
+
+    if (!productName) {
+      return next(new ApiError(400, "Please enter a product name."));
+    }
+
+    // Call the newly converted Node service
+    const { products, error } = await getAggregatedProducts(productName);
+
+    if (!products || products.length === 0) {
+      const msg = error ? `Search failed: ${error}` : "No specific product pages found. Try adding the model or variant.";
+      return next(new ApiError(404, msg));
+    }
+
+    // Hit your dynamic Prisma AI context
+    const summary = await productPriceCompareAgent(productName, products);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        product_name: productName,
+        cheapest: products[0],
+        products: products,
+        all_results: products,
+        summary: summary,
+        ai_summary: summary,
+        total_results: products.length
+      }
+    });
+
+  } catch (error) {
+    return next(new ApiError(500, error.message));
+  }
 };
